@@ -28,3 +28,14 @@ pnpm dev
 ```powershell
 pnpm build
 ```
+
+## Windows 展示版執行檔
+
+展示版固定使用 200 點內建動態模擬資料，不需要 EC62 API、Python 或 Node.js：
+
+```powershell
+pnpm install
+pnpm package:windows
+```
+
+單一檔案成品會輸出到 `release/E62-Dashboard-Demo-1.0.0-Windows-x64.exe`。

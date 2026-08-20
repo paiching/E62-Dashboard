@@ -2,10 +2,15 @@
   "name": "edge-dashboard",
   "private": true,
   "version": "1.0.0",
+  "description": "E62/C62 sensor dashboard desktop demo",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
+    "build:demo": "tsc -b && vite build --mode demo",
+    "desktop": "electron .",
+    "package:windows": "pnpm run build:demo && electron-builder --win portable",
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -b --pretty false"
   },
@@ -19,6 +24,19 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
-    "vite": "^6.0.3"
+    "vite": "^6.0.3",
+    "electron": "^37.10.3",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "tw.com.e62.dashboard.demo",
+    "productName": "E62 Dashboard Demo",
+    "asar": true,
+    "directories": { "output": "release" },
+    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "win": {
+      "target": [{ "target": "portable", "arch": ["x64"] }],
+      "artifactName": "E62-Dashboard-Demo-${version}-Windows-${arch}.${ext}"
+    }
   }
 }

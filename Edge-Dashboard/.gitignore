@@ -1,10 +1,12 @@
 node_modules/
 dist/
+release/
 
 # Local environment configuration
 .env
 .env.*
 !.env.example
+!.env.demo
 
 # Logs and diagnostic reports
 *.log
