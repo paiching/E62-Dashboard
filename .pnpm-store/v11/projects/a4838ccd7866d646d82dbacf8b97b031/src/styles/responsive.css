@@ -1,0 +1,93 @@
+@media (max-width: 1000px) {
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-form, .account-grid { grid-template-columns: 1fr; }
+  .topbar .topbar-title { flex-basis: 180px; }
+  .topbar-system-status em { display: none; }
+  .connection-state span { display: none; }
+}
+
+@media (max-width: 800px) {
+  .app-shell, .app-shell.sidebar-is-collapsed { padding-left: 0; }
+  .sidebar, .sidebar.collapsed { width: min(82vw, 280px); transform: translateX(-105%); box-shadow: 14px 0 34px rgba(6,18,32,.38); }
+  .sidebar.mobile-open { transform: translateX(0); }
+  .sidebar.collapsed .sidebar-brand-copy, .sidebar.collapsed .sidebar-user div, .sidebar.collapsed .sidebar-nav button span { display: block; }
+  .sidebar.collapsed .sidebar-brand-row { padding: 0 12px; }
+  .sidebar.collapsed .sidebar-nav button { justify-content: flex-start; padding: 0 12px; }
+  .sidebar.collapsed .sidebar-user>span { display: grid; }
+  .sidebar-collapse { display: none; }
+  .sidebar-close-mobile { display: grid; margin-left: auto; background: #142b47; border-color: #35516f; color: #fff; }
+  .sidebar-backdrop { position: fixed; inset: 0; z-index: 29; border: 0; background: rgba(5,15,28,.62); }
+  .sidebar-backdrop.visible { display: block; }
+  .mobile-menu { display: grid; }
+  .topbar-overview { display: flex; }
+  .topbar-status-slot { display: none; }
+  .topbar .topbar-title { flex: 1; }
+  .topbar-system-status { max-width: 42%; }
+  .topbar-live-clock time { display: none; }
+  .sensor-toolbar { align-items: stretch; flex-direction: column; }
+  .sensor-filters { display: grid; grid-template-columns: minmax(0,1fr) 130px; }
+  .sensor-filters input { width: 100%; }
+  .display-mode-picker>span { display: none; }
+  .alarm-list article { grid-template-columns: auto minmax(0,1fr) auto; }
+  .alarm-list time { display: none; }
+  .channel-toolbar { flex-direction: column; }
+  .channel-toolbar-summary { padding-top: 0; }
+  .channel-filters { width: 100%; justify-content: flex-start; }
+  .trend-workspace { grid-template-columns: 1fr; }
+  .trend-channel-panel { position: static; }
+  .trend-channel-list { max-height: 230px; }
+}
+
+@media (max-width: 540px) {
+  .login-page { padding: 14px; }
+  .login-card { padding: 20px; }
+  .demo-credentials { display: none; }
+  .page-content { padding: 18px 10px 30px; }
+  .page-header { align-items: flex-start; }
+  .page-header h1 { font-size: 20px; }
+  .topbar-system-status { display: none; }
+  .summary-card { padding: 11px; gap: 8px; }
+  .summary-card>span { width: 33px; height: 33px; }
+  .summary-card b { font-size: 20px; }
+  .sensor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .mode-detailed .sensor-grid, .mode-fullscreen .sensor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sensor-card { padding: 9px; }
+  .sensor-value strong { font-size: 25px; }
+  .sensor-card-footer time { display: none; }
+  .alarm-list article { padding: 11px; }
+  .alarm-list .status-badge { display: none; }
+  .account-profile { align-items: flex-start; flex-wrap: wrap; }
+  .account-profile .secondary-button { width: 100%; }
+  .test-panel>div { flex-direction: column; }
+  .settings-cards { grid-template-columns: 1fr; }
+  .channel-filters { display: grid; grid-template-columns: 1fr 1fr; }
+  .channel-filters>input { width: 100%; grid-column: 1 / -1; }
+  .channel-filters .excel-export { justify-content: center; }
+  .table-pagination { grid-template-columns: 1fr auto; }
+  .table-pagination>span { display: none; }
+  .modal-backdrop { padding: 0; align-items: end; }
+  .sensor-modal { width: 100%; max-height: 94vh; border-radius: 16px 16px 0 0; }
+  .sensor-modal-header { padding: 15px 14px; }
+  .sensor-modal-reading { padding: 17px 14px 13px; }
+  .trend-panel, .sensor-stats { margin-left: 14px; margin-right: 14px; }
+  .sensor-settings-form { padding: 16px 14px; }
+  .modal-actions { flex-direction: column-reverse; }
+  .modal-actions button { width: 100%; }
+  .trend-toolbar { align-items: stretch; flex-wrap: wrap; }
+  .trend-toolbar>span { width: 100%; margin-left: 0; }
+  .trend-chart-panel { padding: 11px; }
+  .account-editor { padding: 16px; }
+  .account-editor-fields, .permission-options { grid-template-columns: 1fr; }
+  .channel-scope-field { grid-column: auto; }
+  .account-editor>footer { flex-direction: column-reverse; }
+  .account-editor>footer button { width: 100%; }
+}
+
+@media (max-width: 370px) {
+  .sensor-grid { grid-template-columns: 1fr; }
+  .mode-detailed .sensor-grid, .mode-fullscreen .sensor-grid { grid-template-columns: 1fr; }
+  .grid-caption { align-items: flex-start; flex-direction: column; }
+  .display-mode-picker { width: 100%; }
+  .display-mode-picker button { flex: 1; justify-content: center; }
+  .refresh-rate-options { grid-template-columns: repeat(2, 1fr); }
+}

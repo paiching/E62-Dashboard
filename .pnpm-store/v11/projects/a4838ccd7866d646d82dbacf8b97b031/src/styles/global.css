@@ -1,0 +1,9 @@
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; }
+body { margin: 0; background: var(--canvas); color: var(--ink); }
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+.boot-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 18px; }
+.boot-screen h1, .boot-screen p { margin: 0; }
+.boot-screen p { margin-top: 5px; color: var(--muted); }
+.brand-mark { width: 54px; height: 54px; border-radius: 14px; display: grid; place-items: center; background: var(--nav); color: #73d2da; font-weight: 900; }

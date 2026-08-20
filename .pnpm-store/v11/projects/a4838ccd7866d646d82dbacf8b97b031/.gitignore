@@ -1,0 +1,29 @@
+node_modules/
+dist/
+
+# Local environment configuration
+.env
+.env.*
+!.env.example
+
+# Logs and diagnostic reports
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build and tooling caches
+.vite/
+coverage/
+*.tsbuildinfo
+
+# Editor and operating-system files
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
