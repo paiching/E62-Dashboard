@@ -1,0 +1,17 @@
+:root {
+  color-scheme: light;
+  font-family: Inter, "Segoe UI", "Microsoft JhengHei", sans-serif;
+  --nav: #0b1d33;
+  --nav-soft: #173a5e;
+  --canvas: #f2f6fa;
+  --surface: #ffffff;
+  --line: #d9e3ed;
+  --ink: #11243d;
+  --muted: #64788f;
+  --blue: #2364aa;
+  --teal: #087e8b;
+  --green: #148266;
+  --amber: #c77d10;
+  --red: #c43d4e;
+  --shadow: 0 8px 24px rgba(17, 36, 61, 0.08);
+}
