@@ -75,7 +75,7 @@
 
       <ng-container *ngIf="view==='channels'">
         <div class="permission-save-message" *ngIf="reportMessage">{{ reportMessage }}</div>
-        <section class="panel table-panel"><div class="channel-toolbar"><div class="channel-toolbar-summary"><b>{{ reportTotal || filteredChannelRows.length }} 筆歷史資料</b><span>SQLite 報表</span></div><div class="channel-filters"><input type="search" [(ngModel)]="channelQuery" (keyup.enter)="channelPage=1; runReportQuery()" placeholder="搜尋通道或名稱"><select [(ngModel)]="channelStatus" (ngModelChange)="channelPage=1; runReportQuery()"><option value="all">全部狀態</option><option value="ok">正常</option><option value="alarm">警報</option><option value="error">斷線</option></select><label>起始日期<input type="date" [(ngModel)]="channelDateFrom" (change)="channelPage=1; runReportQuery()"></label><label>結束日期<input type="date" [(ngModel)]="channelDateTo" (change)="channelPage=1; runReportQuery()"></label><button class="filter-reset" (click)="resetChannelFilters()"><mat-icon>restart_alt</mat-icon>清除</button><button class="excel-export" (click)="exportCsv()"><mat-icon>download</mat-icon>匯出 CSV</button></div></div>
+<section class="panel table-panel"><div class="channel-toolbar"><div class="channel-toolbar-summary"><b>{{ reportTotal || filteredChannelRows.length }} 筆歷史資料</b><span>歷史報表</span></div><div class="channel-filters"><input type="search" [(ngModel)]="channelQuery" (keyup.enter)="channelPage=1; runReportQuery()" placeholder="搜尋通道或名稱"><select [(ngModel)]="channelStatus" (ngModelChange)="channelPage=1; runReportQuery()"><option value="all">全部狀態</option><option value="ok">正常</option><option value="alarm">警報</option><option value="error">斷線</option></select><label>起始日期<input type="date" [(ngModel)]="channelDateFrom" (change)="channelPage=1; runReportQuery()"></label><label>結束日期<input type="date" [(ngModel)]="channelDateTo" (change)="channelPage=1; runReportQuery()"></label><button class="filter-reset" (click)="refreshReport()"><mat-icon>refresh</mat-icon>刷新</button><button class="excel-export" (click)="exportCsv()"><mat-icon>download</mat-icon>匯出 CSV</button></div></div>
           <div class="table-scroll"><table><thead><tr><th>通道</th><th>名稱</th><th>狀態</th><th>PV</th><th>SV</th><th>MIN</th><th>MAX</th><th>更新時間</th></tr></thead><tbody><tr *ngFor="let channel of channelRows"><td><button class="table-sensor-link" (click)="openSensor(channel)">CH{{ channel.id }}</button></td><td><button class="table-sensor-link" (click)="openSensor(channel)">{{ channel.name }}</button></td><td><span class="status-badge" [ngClass]="state(channel)">{{ statusLabel(state(channel)) }}</span></td><td>{{ formatValue(channel.pv) }} °C</td><td>{{ formatValue(channel.sv) }} °C</td><td>{{ formatValue(channel.min) }}</td><td>{{ formatValue(channel.max) }}</td><td>{{ formatDateTime(channel.time) }}</td></tr></tbody></table></div>
           <footer class="table-pagination"><label>每頁<select [(ngModel)]="channelPageSize" (ngModelChange)="channelPage=1; runReportQuery()"><option *ngFor="let size of pageSizes" [value]="size">{{ size }} 筆</option></select></label><span>{{ channelRows.length }} / {{ reportTotal || filteredChannelRows.length }}</span><div><button (click)="changeReportPage(channelPage-1)" [disabled]="channelPage<=1" aria-label="上一頁"><mat-icon>chevron_left</mat-icon></button><b>第 {{ channelPage }} / {{ channelPageCount }} 頁</b><button (click)="changeReportPage(channelPage+1)" [disabled]="channelPage>=channelPageCount" aria-label="下一頁"><mat-icon>chevron_right</mat-icon></button></div></footer>
         </section>
@@ -88,22 +88,52 @@
       </ng-container>
 
       <ng-container *ngIf="view==='permissions'">
-        <div class="page-inline-actions"><button class="primary-button" (click)="addAccount()"><mat-icon>add</mat-icon>新增帳號</button></div><div class="local-storage-notice"><mat-icon>verified_user</mat-icon><span><b>SQLite 權限模式</b>　帳號、密碼雜湊、角色與菜單權限皆由資料庫提供。</span></div><div class="permission-save-message" *ngIf="permissionMessage">{{ permissionMessage }}</div>
-        <section class="panel table-panel permission-table"><div class="table-scroll"><table><thead><tr><th>帳號</th><th>顯示名稱</th><th>角色</th><th>通道範圍</th><th>權限</th><th>CRUD 操作</th></tr></thead><tbody><tr *ngFor="let account of accounts"><td><b>{{ account.username }}</b></td><td>{{ account.displayName }}</td><td><span class="role-pill">{{ account.role }}</span></td><td>{{ account.scope }}</td><td class="permission-summary">{{ account.role==='Administrator' ? '完整權限' : account.role==='Operator' ? '即時監控／警報中心／解除警報' : '即時監控／警報中心' }}</td><td><div class="permission-row-actions"><button><mat-icon>edit</mat-icon>編輯／權限</button><button class="danger" *ngIf="account.username!=='admin'" (click)="removeAccount(account)"><mat-icon>delete</mat-icon>刪除</button></div></td></tr></tbody></table></div></section>
-      </ng-container>
-
-      <ng-container *ngIf="view==='account'">
-        <section class="panel test-panel test-panel-standalone"><h3>桌面功能測試</h3><p>請確認聲音輸出及桌面通知權限皆可正常運作。</p><div><button class="test-button" (click)="testSound()"><mat-icon>volume_up</mat-icon>測試聲音</button><button class="test-button" (click)="testNotification()"><mat-icon>notifications_active</mat-icon>測試通知</button></div><span class="test-message" *ngIf="testMessage">{{ testMessage }}</span></section>
+        <div class="page-inline-actions"><button class="primary-button" (click)="addAccount()"><mat-icon>add</mat-icon>新增帳號</button></div><div class="permission-save-message" [class.is-error]="permissionFailed" *ngIf="permissionMessage" role="status">{{ permissionMessage }}</div>
+        <section class="panel table-panel permission-table"><div class="table-scroll"><table><thead><tr><th>帳號</th><th>顯示名稱</th><th>角色</th><th>通道範圍</th><th>權限</th><th>CRUD 操作</th></tr></thead><tbody><tr *ngFor="let account of accounts"><td><b>{{ account.username }}</b></td><td>{{ account.displayName }}</td><td><span class="role-pill">{{ account.role }}</span></td><td>{{ account.scope }}</td><td class="permission-summary">{{ accountPermissionSummary(account) }}</td><td><div class="permission-row-actions"><button type="button" (click)="openAccountEditor(account, accountEditor)"><mat-icon>edit</mat-icon>編輯／權限</button><button class="danger" *ngIf="account.username!=='admin'" (click)="removeAccount(account)"><mat-icon>delete</mat-icon>刪除</button></div></td></tr></tbody></table></div></section>
       </ng-container>
 
       <ng-container *ngIf="view==='settings'">
-        <div class="permission-save-message" *ngIf="reportMessage">{{ reportMessage }}</div>
+        <div class="permission-save-message" *ngIf="settingsMessage" role="status">{{ settingsMessage }}</div>
         <section class="settings-cards">
-          <article class="panel info-card"><span><mat-icon>database</mat-icon></span><div><h3>SQLite 資料庫</h3><p>API 歷史、報表、設定、帳號及權限的單一資料來源。</p><small class="database-path">{{ databasePath }}</small></div></article>
+          <article class="panel info-card alert-settings-card">
+            <span><mat-icon>volume_up</mat-icon></span><div>
+              <div class="alert-setting-heading"><h3>異常警報聲音</h3><label class="switch"><input type="checkbox" aria-label="啟用警報聲音" [ngModel]="soundEnabled" (ngModelChange)="setAlertEnabled('alarms.sound_enabled', $event)" [disabled]="alertSettingsSaving"><span></span></label></div>
+              <p>{{ soundEnabled ? '已啟用' : '已關閉' }} · 異常持續時，每 {{ soundIntervalSeconds }} 秒播放一次。</p>
+              <div class="alarm-interval-setting"><label>警報聲間隔（秒）<input type="number" min="1" max="300" step="1" [(ngModel)]="pendingSoundIntervalSeconds" [disabled]="alertSettingsSaving"></label><button class="secondary-button" (click)="saveSoundInterval()" [disabled]="alertSettingsSaving">儲存間隔</button></div>
+              <p>與儀錶板刷新頻率獨立；偵測到全部恢復正常、關閉聲音或登出後停止。</p>
+              <button class="test-button" (click)="testSound()" [disabled]="!soundEnabled || alertSettingsSaving"><mat-icon>volume_up</mat-icon>測試聲音</button>
+            </div>
+          </article>
+          <article class="panel info-card alert-settings-card">
+            <span><mat-icon>notifications_active</mat-icon></span><div>
+              <div class="alert-setting-heading"><h3>桌面異常通知</h3><label class="switch"><input type="checkbox" aria-label="啟用桌面通知" [ngModel]="notificationsEnabled" (ngModelChange)="setAlertEnabled('notifications.enabled', $event)" [disabled]="alertSettingsSaving"><span></span></label></div>
+              <p>{{ notificationsEnabled ? '已啟用' : '已關閉' }} · 同一異常不會每次刷新重複通知。</p>
+              <button class="test-button" (click)="testNotification()" [disabled]="!notificationsEnabled || alertSettingsSaving"><mat-icon>notifications_active</mat-icon>測試通知</button>
+              <p>需保持程式執行；Windows 勿擾或關閉通知可能阻擋顯示。</p>
+            </div>
+          </article>
+          <div class="alert-settings-feedback" *ngIf="testMessage || alertMessage || soundMessage" role="status"><p *ngIf="testMessage">{{ testMessage }}</p><p *ngIf="alertMessage" class="form-error">{{ alertMessage }}</p><p *ngIf="soundMessage" class="form-error">{{ soundMessage }}</p></div>
+          <article class="panel info-card database-card" [attr.aria-busy]="databaseCleaning">
+            <span><mat-icon>storage</mat-icon></span>
+            <div>
+              <h3>SQLite 資料庫</h3>
+              <div class="database-status" [ngClass]="databaseState" role="status"><span class="database-status-dot" aria-hidden="true"></span>{{ databaseStatusLabel }}</div>
+              <p>API 歷史、報表、設定、帳號及權限的單一資料來源。</p>
+              <small class="database-path">{{ databasePath }}</small>
+              <small class="database-check-time" *ngIf="databaseCheckedAt">最後檢查：{{ formatTime(databaseCheckedAt) }}（每 10 秒更新）</small>
+              <p class="database-error" *ngIf="databaseError">{{ databaseError }}</p>
+              <div class="database-actions">
+                <button type="button" class="secondary-button" (click)="checkDatabaseConnection()" [disabled]="databaseChecking || databaseCleaning || databaseState==='browser'"><mat-icon>refresh</mat-icon>{{ databaseChecking ? '檢查中…' : '檢查連線' }}</button>
+                <button type="button" class="secondary-button database-cleanup-button" (click)="cleanupDatabase()" [disabled]="!canCleanupDatabase"><mat-icon>delete</mat-icon>{{ databaseCleaning ? '確認／清理中…' : '清理歷史資料' }}</button>
+              </div>
+              <p *ngIf="databaseState==='browser'">清理功能需以 Electron 桌面版啟動。</p>
+              <p *ngIf="databaseCleanupMessage" class="database-cleanup-result" [class.database-error]="databaseCleanupFailed" role="status">{{ databaseCleanupMessage }}</p>
+            </div>
+          </article>
           <article class="panel info-card settings-edit-card"><span><mat-icon>dns</mat-icon></span><div><h3>API 資料端點</h3><p>Live 模式每次讀取成功後立即寫入 sensor_readings。</p><input [(ngModel)]="appSettings['api.data_url']" placeholder="http://127.0.0.1:8080/api/data"><button class="secondary-button" (click)="saveDatabaseSetting('api.data_url', appSettings['api.data_url'])">儲存端點</button></div></article>
           <article class="panel info-card settings-edit-card"><span><mat-icon>key</mat-icon></span><div><h3>EC62 API Token</h3><p>需要驗證時會以 X-EC62-Token Header 傳送。</p><input type="password" [(ngModel)]="appSettings['api.auth_token']" placeholder="未啟用驗證可留空"><button class="secondary-button" (click)="saveDatabaseSetting('api.auth_token', appSettings['api.auth_token'])">儲存 Token</button></div></article>
           <article class="panel info-card settings-edit-card"><span><mat-icon>storage</mat-icon></span><div><h3>資料模式</h3><p>Mock 也會寫入 SQLite，方便先測試報表。</p><select [(ngModel)]="appSettings['data.mode']"><option value="mock">MOCK · 模擬資料</option><option value="live">LIVE · 正式 API</option></select><button class="secondary-button" (click)="saveDatabaseSetting('data.mode', appSettings['data.mode'])">儲存模式</button></div></article>
-          <article class="panel info-card settings-edit-card"><span><mat-icon>refresh</mat-icon></span><div><h3>更新頻率</h3><p>Dashboard 背景同步與寫入間隔。</p><input type="number" min="1000" step="1000" [(ngModel)]="appSettings['api.poll_interval_ms']"><button class="secondary-button" (click)="saveDatabaseSetting('api.poll_interval_ms', appSettings['api.poll_interval_ms'])">儲存頻率</button></div></article>
+          <article class="panel info-card settings-edit-card"><span><mat-icon>refresh</mat-icon></span><div><h3>更新頻率</h3><p>Dashboard 背景同步與寫入間隔。</p><select [(ngModel)]="appSettings['api.poll_interval_ms']" aria-label="更新頻率"><option *ngFor="let seconds of refreshOptions" [ngValue]="seconds * 1000">{{ seconds }} 秒</option></select><button class="secondary-button" (click)="saveDatabaseSetting('api.poll_interval_ms', appSettings['api.poll_interval_ms'])">儲存頻率</button></div></article>
           <article class="panel info-card settings-edit-card"><span><mat-icon>table_view</mat-icon></span><div><h3>報表保留天數</h3><p>每次匯入後自動清理超過期限的歷史資料。</p><input type="number" min="1" [(ngModel)]="appSettings['report.retention_days']"><button class="secondary-button" (click)="saveDatabaseSetting('report.retention_days', appSettings['report.retention_days'])">儲存天數</button></div></article>
           <article class="panel info-card dashboard-status-setting"><span><mat-icon>notifications_active</mat-icon></span><div><h3>儀錶板警報狀態列</h3><p>此設定同樣保存於 SQLite。</p><b>{{ showDashboardStatus ? '目前開啟' : '目前關閉' }}</b></div><label class="switch"><input type="checkbox" [(ngModel)]="showDashboardStatus" (change)="saveDatabaseSetting('dashboard.show_status', showDashboardStatus)"><span></span></label></article>
         </section>
@@ -121,6 +151,26 @@
   </section>
 </div>
 
+<dialog #accountEditor class="account-editor-dialog" aria-labelledby="account-editor-title" (cancel)="$event.preventDefault(); closeAccountEditor()">
+  <form *ngIf="accountDraft" (ngSubmit)="saveAccountEdit()" [attr.aria-busy]="accountSaving || accountEditorLoading">
+    <header><h2 id="account-editor-title">編輯帳號／權限</h2><button type="button" class="icon-button" (click)="closeAccountEditor()" [disabled]="accountSaving" aria-label="關閉編輯視窗"><mat-icon>close</mat-icon></button></header>
+    <fieldset [disabled]="accountSaving || accountEditorLoading || !accountEditingAvailable">
+      <div class="account-editor-fields">
+        <label>帳號<input [value]="accountDraft.username" readonly></label>
+        <label>顯示名稱<input name="displayName" [(ngModel)]="accountDraft.displayName" required maxlength="80" autofocus></label>
+        <label>角色<select name="roleCode" [(ngModel)]="accountDraft.roleCode" [disabled]="accountAccessProtected" required><option *ngIf="!accountRoles.length" [value]="accountDraft.roleCode">{{ accountDraft.role }}</option><option *ngFor="let role of accountRoles" [value]="role.code">{{ role.displayName }}</option></select></label>
+        <label>通道範圍<input name="scope" [(ngModel)]="accountDraft.scope" placeholder="all 或 CH001-CH100" maxlength="200"></label>
+      </div>
+      <label class="account-active-toggle"><input type="checkbox" name="active" [(ngModel)]="accountDraft.active" [disabled]="accountAccessProtected">啟用帳號</label>
+    </fieldset>
+    <p *ngIf="accountAccessProtected" class="account-editor-note">內建管理員及目前登入帳號不可停用或變更角色。</p>
+    <section class="account-role-preview" aria-label="角色權限"><h3>角色權限</h3><p *ngIf="accountEditorLoading">讀取中…</p><ul *ngIf="!accountEditorLoading && selectedAccountPermissions.length"><li *ngFor="let permission of selectedAccountPermissions">{{ permission.label }}</li></ul><p *ngIf="!accountEditorLoading && !selectedAccountPermissions.length">尚無可顯示的權限</p></section>
+    <p class="account-editor-note">權限由角色決定；變更角色或停用後，該帳號的其他登入工作階段將失效。此處不修改密碼。</p>
+    <p *ngIf="accountEditorError" class="form-error" role="alert">{{ accountEditorError }}</p>
+    <footer><button type="button" class="secondary-button" (click)="closeAccountEditor()" [disabled]="accountSaving">取消</button><button type="submit" class="primary-button" [disabled]="accountSaving || accountEditorLoading || !accountEditingAvailable || !accountRoles.length">{{ accountSaving ? '儲存中…' : '儲存變更' }}</button></footer>
+  </form>
+</dialog>
+
 <div class="refresh-rate-backdrop" *ngIf="refreshDialogOpen" (mousedown)="$event.target===$event.currentTarget && (refreshDialogOpen=false)">
-  <section class="refresh-rate-dialog"><header><div><mat-icon>refresh</mat-icon><h2>設定刷新頻率</h2></div><button class="icon-button" (click)="refreshDialogOpen=false" aria-label="關閉"><mat-icon>close</mat-icon></button></header><p>Dashboard 將依照選擇的間隔，自動更新 Sensor 資料。</p><div class="refresh-rate-options"><button *ngFor="let option of [1,3,5,10,30,60]" [class.active]="pendingRefreshSeconds===option" (click)="pendingRefreshSeconds=option">{{ option }}<span>秒</span></button></div><footer><button class="secondary-button" (click)="refreshDialogOpen=false">取消</button><button class="primary-button" (click)="applyRefreshRate()">套用設定</button></footer></section>
+  <section class="refresh-rate-dialog"><header><div><mat-icon>refresh</mat-icon><h2>設定刷新頻率</h2></div><button class="icon-button" (click)="refreshDialogOpen=false" aria-label="關閉"><mat-icon>close</mat-icon></button></header><p>Dashboard 將依照選擇的間隔，自動更新 Sensor 資料。</p><div class="refresh-rate-options"><button *ngFor="let option of refreshOptions" [class.active]="pendingRefreshSeconds===option" (click)="pendingRefreshSeconds=option">{{ option }}<span>秒</span></button></div><footer><button class="secondary-button" (click)="refreshDialogOpen=false">取消</button><button class="primary-button" (click)="applyRefreshRate()">套用設定</button></footer></section>
 </div>

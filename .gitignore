@@ -1,0 +1,7 @@
+# Local pnpm store (contains junctions back to the source projects).
+/.pnpm-store/
+
+# Electron packaging output, including alternate build directories.
+/Angular-Dashboard/release*/
+/Edge-Dashboard/release*/
+/Edge-Dashboard/E62 release.zip

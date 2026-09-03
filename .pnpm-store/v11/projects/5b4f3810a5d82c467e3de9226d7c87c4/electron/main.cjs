@@ -1,12 +1,18 @@
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Notification } = require('electron');
 const path = require('node:path');
 const db = require('./database.cjs');
+const { createNotifier } = require('./notifications.cjs');
+const notify = createNotifier(Notification, db.getAlertSettings);
+if (process.platform === 'win32') app.setAppUserModelId('tw.com.e62.dashboard.angular.demo');
 
 let mainWindow = null;
 let databasePath = '';
 
 function registerIpc() {
   ipcMain.handle('db:bootstrap', () => ({ settings: db.settingsObject(), databasePath }));
+  ipcMain.handle('db:status', () => db.databaseStatus());
+  ipcMain.handle('alerts:notify', (_event, input) => notify(input.token, input.body, input.test === true));
+  ipcMain.handle('db:cleanup-history', (_event, input) => db.cleanupHistory(input.token, mainWindow, dialog));
   ipcMain.handle('auth:login', (_event, input) => db.login(input.username, input.password));
   ipcMain.handle('auth:logout', (_event, token) => db.logout(token));
   ipcMain.handle('settings:save', (_event, input) => db.saveSetting(input.token, input.key, input.value));
@@ -36,6 +42,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
   const showWindow = () => {

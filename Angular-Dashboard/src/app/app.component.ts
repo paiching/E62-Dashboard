@@ -5,7 +5,8 @@ import { DomSanitizer } from '@angular/platform-browser';
 import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
 import { AlarmFilter, LocalAccount, SensorChannel, SensorState, UserSession, ViewKey, sensorState } from './dashboard.model';
 import { createMockChannels } from './mock-data';
-import { DatabaseMenu, DatabaseService, ReportFilter, ReportRow } from './database.service';
+import { AlarmTracker } from './alert-state';
+import { AccountRole, DatabaseMenu, DatabaseService, ReportFilter, ReportRow } from './database.service';
 import { MaterialSvgIconDirective, registerDashboardMaterialIcons } from './material-icons';
 
 interface NavItem { key: ViewKey; label: string; icon: string; }
@@ -24,7 +25,6 @@ export class AppComponent implements OnInit, OnDestroy {
     { key: 'channels', label: '報表資料', icon: 'table_view' },
     { key: 'alarms', label: '警報中心', icon: 'notifications_active' },
     { key: 'permissions', label: '帳號權限', icon: 'verified_user' },
-    { key: 'account', label: '測試', icon: 'science' },
     { key: 'settings', label: '設定', icon: 'settings' },
   ];
   readonly viewTitles: Record<ViewKey, string> = {
@@ -38,8 +38,17 @@ export class AppComponent implements OnInit, OnDestroy {
   session: UserSession | null = null;
   appSettings: Record<string, unknown> = {};
   databasePath = '瀏覽器開發模式（Electron 啟動後使用 SQLite）';
+  databaseState: 'checking' | 'connected' | 'disconnected' | 'browser' = 'checking';
+  databaseError = '';
+  databaseCheckedAt = '';
+  databaseChecking = false;
+  databaseCleaning = false;
+  databaseCleanupMessage = '';
+  databaseCleanupFailed = false;
+  private databaseTimer?: number;
   syncError = '';
   reportMessage = '';
+  settingsMessage = '';
   username = localStorage.getItem('edge-angular-last-username') ?? '';
   password = '';
   loginError = '';
@@ -50,7 +59,24 @@ export class AppComponent implements OnInit, OnDestroy {
   clock = new Date();
   channels = createMockChannels();
   lastUpdated = new Date();
-  pollIntervalMs = 3000;
+  readonly refreshOptions = [10, 30, 60];
+  pollIntervalMs = 60000;
+  soundEnabled = true;
+  soundIntervalSeconds = 3;
+  pendingSoundIntervalSeconds = 3;
+  soundMessage = '';
+  private alarmSnapshotReady = false;
+  private alarmSoundTimer?: number;
+  private alarmSoundTimerMs = 0;
+  private audioGeneration = 0;
+  private soundStarting = false;
+  private readonly activeAlarmOscillators = new Set<OscillatorNode>();
+  notificationsEnabled = true;
+  alertSettingsSaving = false;
+  alertMessage = '';
+  private readonly alarmTracker = new AlarmTracker();
+  private alertAudio?: AudioContext;
+  private refreshing = false;
   private dataTimer = window.setInterval(() => this.refreshData(), this.pollIntervalMs);
   private clockTimer = window.setInterval(() => this.clock = new Date(), 1000);
 
@@ -59,7 +85,7 @@ export class AppComponent implements OnInit, OnDestroy {
   overviewPage = 0;
   displayMode: 'compact' | 'detailed' | 'fullscreen' = 'compact';
   refreshDialogOpen = false;
-  pendingRefreshSeconds = 3;
+  pendingRefreshSeconds = 60;
   selectedSensor: SensorChannel | null = null;
   editLow = 0;
   editHigh = 0;
@@ -81,6 +107,13 @@ export class AppComponent implements OnInit, OnDestroy {
   selectedTrendIds = this.channels.slice(0, 4).map((channel) => channel.id);
   testMessage = '';
   permissionMessage = '';
+  permissionFailed = false;
+  accountDraft: LocalAccount | null = null;
+  accountRoles: AccountRole[] = [];
+  accountEditorError = '';
+  accountEditorLoading = false;
+  accountSaving = false;
+  private accountEditorElement?: HTMLDialogElement;
   accounts: LocalAccount[] = this.loadAccounts();
 
   constructor(private readonly db: DatabaseService, iconRegistry: MatIconRegistry, sanitizer: DomSanitizer) {
@@ -88,29 +121,46 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   async ngOnInit(): Promise<void> {
-    const bootstrap = await this.db.bootstrap();
-    if (bootstrap) {
-      this.appSettings = bootstrap.settings;
-      this.databasePath = bootstrap.databasePath;
-      this.applyDatabaseSettings();
+    this.applyDatabaseSettings();
+    this.databaseTimer = window.setInterval(() => void this.checkDatabaseConnection(), 10000);
+    void this.checkDatabaseConnection();
+    try {
+      const bootstrap = await this.db.bootstrap();
+      if (bootstrap) {
+        this.appSettings = bootstrap.settings;
+        this.databasePath = bootstrap.databasePath;
+        this.applyDatabaseSettings();
+      }
+    } catch (error) {
+      this.databasePath = '資料庫資訊讀取失敗，請重新啟動桌面程式';
+      this.databaseError = error instanceof Error ? error.message : '資料庫初始化失敗';
     }
   }
 
   ngOnDestroy(): void {
+    this.stopAlarmSound();
     window.clearInterval(this.dataTimer);
     window.clearInterval(this.clockTimer);
+    window.clearInterval(this.databaseTimer);
+    if (this.alertAudio) void this.alertAudio.close().catch(() => {});
   }
 
   async login(): Promise<void> {
+    this.alarmSnapshotReady = false;
+    this.stopAlarmSound();
+    this.alarmTracker.reset();
+    if (this.soundEnabled) void this.prepareAlertAudio().catch(() => {});
     if (this.db.available) {
       try {
         const result = await this.db.login(this.username, this.password);
         if (!result) throw new Error('SQLite Bridge 尚未就緒');
         this.session = result.session;
-        this.navItems = result.menus.map((menu: DatabaseMenu) => ({ key: menu.key, label: menu.label, icon: menu.icon }));
+        this.navItems = result.menus.filter(menu => menu.key !== 'account').map((menu: DatabaseMenu) => ({ key: menu.key, label: menu.label, icon: menu.icon }));
         this.appSettings = result.settings;
         this.applyDatabaseSettings();
         this.view = (String(this.appSettings['ui.default_view'] ?? 'overview') as ViewKey);
+        if (this.view === 'account') this.view = 'settings';
+        if (!this.navItems.some(item => item.key === this.view)) this.view = 'overview';
         this.loginError = '';
         localStorage.setItem('edge-angular-last-username', result.session.username);
         this.password = '';
@@ -136,10 +186,11 @@ export class AppComponent implements OnInit, OnDestroy {
     localStorage.setItem('edge-angular-last-username', this.username.trim().toLowerCase());
     this.session = { token: 'browser-demo', username: this.username.trim().toLowerCase(), displayName: account.displayName, role: account.role, roleCode: account.role.toLowerCase(), permissions: ['dashboard.view','trends.view','reports.view','reports.export','alarms.view','alarms.ack','users.manage','settings.manage','tests.run'] };
     this.password = '';
+    await this.refreshData();
   }
 
-  logout(): void { if (this.session && this.db.available) void this.db.logout(this.session.token); this.session = null; this.view = 'overview'; }
-  navigate(view: ViewKey): void { this.view = view; this.mobileOpen = false; if (view === 'channels') void this.runReportQuery(); }
+  logout(): void { if (this.session && this.db.available) void this.db.logout(this.session.token); this.session = null; this.alarmSnapshotReady = false; this.stopAlarmSound(); this.alarmTracker.reset(); this.view = 'overview'; }
+  navigate(view: ViewKey): void { this.view = view; this.mobileOpen = false; if (view === 'channels') void this.runReportQuery(); if (view === 'permissions') this.permissionMessage = ''; if (view === 'settings') void this.checkDatabaseConnection(); }
   toggleSidebar(): void {
     this.collapsed = !this.collapsed;
     localStorage.setItem('edge-angular-sidebar-collapsed', this.collapsed ? '1' : '0');
@@ -149,7 +200,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   async refreshData(): Promise<void> {
-    if (this.trendPaused) return;
+    if (this.databaseCleaning || this.refreshing) return;
+    this.refreshing = true;
+    const sessionToken = this.session?.token;
     const previous = new Map(this.channels.map((channel) => [channel.id, channel.history]));
     try {
       if (this.session && this.db.available && this.appSettings['data.mode'] === 'live') {
@@ -161,19 +214,44 @@ export class AppComponent implements OnInit, OnDestroy {
           await this.db.ingestSnapshot(this.session.token, { time: new Date().toISOString(), channels: this.channels }, 'mock');
         }
       }
+      if (sessionToken !== this.session?.token) return;
+      if (this.trendPaused) this.channels = this.channels.map(channel => ({ ...channel, history: previous.get(channel.id) ?? channel.history }));
       this.syncError = '';
+      this.alarmSnapshotReady = Boolean(this.session);
+      this.syncAlarmSound();
+      if (this.session) {
+        const changed = this.alarmTracker.collect(this.channels, channel => this.state(channel));
+        if (changed.length) {
+          const summary = changed.slice(0, 5).map(channel => `CH${channel.id} ${this.statusLabel(this.state(channel))}`).join('、');
+          void this.emitAlarm(`偵測到 ${changed.length} 點新異常：${summary}${changed.length > 5 ? '…' : ''}`);
+        }
+      }
     } catch (error) {
+      if (sessionToken !== this.session?.token) return;
       this.syncError = error instanceof Error ? error.message : '資料同步失敗';
+      this.alarmSnapshotReady = Boolean(this.session);
+      this.syncAlarmSound();
+      if (this.session && this.alarmTracker.fail()) void this.emitAlarm('資料同步失敗，請檢查設備 API、網路及資料庫連線。');
+    } finally {
+      this.refreshing = false;
     }
     this.lastUpdated = new Date();
     if (this.selectedSensor) this.selectedSensor = this.channels.find((item) => item.id === this.selectedSensor?.id) ?? null;
   }
 
   private applyDatabaseSettings(): void {
-    this.pollIntervalMs = Math.max(1000, Number(this.appSettings['api.poll_interval_ms'] ?? 3000));
+    const interval = Number(this.appSettings['api.poll_interval_ms'] ?? 60000);
+    this.pollIntervalMs = this.refreshOptions.includes(interval / 1000) ? interval : 60000;
+    this.appSettings['api.poll_interval_ms'] = this.pollIntervalMs;
+    this.soundEnabled = this.appSettings['alarms.sound_enabled'] !== false;
+    const soundInterval = Number(this.appSettings['alarms.sound_interval_seconds'] ?? 3);
+    this.soundIntervalSeconds = Number.isInteger(soundInterval) && soundInterval >= 1 && soundInterval <= 300 ? soundInterval : 3;
+    this.pendingSoundIntervalSeconds = this.soundIntervalSeconds;
+    this.notificationsEnabled = this.appSettings['notifications.enabled'] !== false;
     this.showDashboardStatus = this.appSettings['dashboard.show_status'] !== false;
     window.clearInterval(this.dataTimer);
     this.dataTimer = window.setInterval(() => void this.refreshData(), this.pollIntervalMs);
+    this.syncAlarmSound();
   }
 
   get normalCount(): number { return this.channels.filter((channel) => this.state(channel) === 'ok').length; }
@@ -215,10 +293,14 @@ export class AppComponent implements OnInit, OnDestroy {
     if (document.fullscreenElement) await document.exitFullscreen();
     this.displayMode = mode;
   }
-  applyRefreshRate(): void {
-    this.pollIntervalMs = this.pendingRefreshSeconds * 1000;
-    window.clearInterval(this.dataTimer);
-    this.dataTimer = window.setInterval(() => this.refreshData(), this.pollIntervalMs);
+  async applyRefreshRate(): Promise<void> {
+    if (!this.refreshOptions.includes(this.pendingRefreshSeconds)) return;
+    if (this.db.available && this.session?.permissions.includes('settings.manage')) {
+      if (!await this.saveDatabaseSetting('api.poll_interval_ms', this.pendingRefreshSeconds * 1000)) return;
+    } else {
+      this.appSettings['api.poll_interval_ms'] = this.pendingRefreshSeconds * 1000;
+      this.applyDatabaseSettings();
+    }
     this.refreshDialogOpen = false;
   }
 
@@ -238,12 +320,14 @@ export class AppComponent implements OnInit, OnDestroy {
     const page = Math.min(this.channelPage, this.channelPageCount);
     return this.filteredChannelRows.slice((page - 1) * this.channelPageSize, page * this.channelPageSize);
   }
-  resetChannelFilters(): void { this.channelQuery = ''; this.channelStatus = 'all'; this.channelDateFrom = ''; this.channelDateTo = ''; this.channelPage = 1; void this.runReportQuery(); }
+  refreshReport(): void { this.channelPage = 1; void this.runReportQuery(); }
   private reportFilter(includePage = true): ReportFilter {
     return { query: this.channelQuery, state: this.channelStatus, from: this.channelDateFrom, to: this.channelDateTo, limit: includePage ? this.channelPageSize : undefined, offset: includePage ? (this.channelPage - 1) * this.channelPageSize : undefined };
   }
   async runReportQuery(): Promise<void> {
     if (!this.session || !this.db.available) return;
+    const startedAt = performance.now();
+    this.reportMessage = '';
     try {
       const result = await this.db.queryReport(this.session.token, this.reportFilter());
       if (!result) return;
@@ -253,7 +337,7 @@ export class AppComponent implements OnInit, OnDestroy {
         time: row.time, history: [], min: row.pv ?? 0, max: row.pv ?? 0, avg: row.pv ?? 0, count: 1,
         web_lo: row.web_lo ?? 0, web_hi: row.web_hi ?? 0, web_alarm: row.state === 'alarm', web_alarm_ack: false,
       }));
-      this.reportMessage = `已從 SQLite 查詢 ${result.total} 筆歷史資料`;
+      this.reportMessage = `完成查詢，共 ${result.total} 筆，耗時 ${(performance.now() - startedAt).toFixed(1)} ms`;
     } catch (error) { this.reportMessage = error instanceof Error ? error.message : '報表查詢失敗'; }
   }
   async changeReportPage(page: number): Promise<void> { this.channelPage = Math.max(1, Math.min(this.channelPageCount, page)); await this.runReportQuery(); }
@@ -289,24 +373,125 @@ export class AppComponent implements OnInit, OnDestroy {
     return channel.history.slice(-this.trendPointLimit).map((point, index, points) => `${68 + index * (904 / Math.max(1, points.length - 1))},${22 + ((max - point.value) / range) * 360}`).join(' ');
   }
 
-  testSound(): void {
-    const context = new AudioContext(); const oscillator = context.createOscillator(); const gain = context.createGain();
-    oscillator.connect(gain); gain.connect(context.destination); oscillator.frequency.value = 880; gain.gain.value = .08; oscillator.start(); oscillator.stop(context.currentTime + .25); this.testMessage = '測試聲音已播放';
+  private async prepareAlertAudio(): Promise<AudioContext> {
+    if (!this.alertAudio || this.alertAudio.state === 'closed') this.alertAudio = new AudioContext();
+    if (this.alertAudio.state === 'suspended') await this.alertAudio.resume();
+    if (this.alertAudio.state !== 'running') throw new Error('音訊尚未啟用，請在設定按「測試聲音」');
+    return this.alertAudio;
+  }
+
+  get hasActiveSoundAlarm(): boolean {
+    // Acknowledging an alarm does not mean the physical condition recovered.
+    return Boolean(this.session && this.alarmSnapshotReady && (this.syncError || this.channels.some(channel => sensorState({ ...channel, web_alarm_ack: false }) !== 'ok')));
+  }
+
+  private stopAlarmSound(): void {
+    window.clearInterval(this.alarmSoundTimer);
+    this.alarmSoundTimer = undefined;
+    this.alarmSoundTimerMs = 0;
+    this.audioGeneration++;
+    for (const oscillator of this.activeAlarmOscillators) {
+      try { oscillator.stop(); } catch { /* Already stopped. */ }
+    }
+    this.activeAlarmOscillators.clear();
+  }
+
+  private syncAlarmSound(): void {
+    if (!this.soundEnabled || !this.hasActiveSoundAlarm) { this.stopAlarmSound(); return; }
+    const interval = this.soundIntervalSeconds * 1000;
+    if (this.alarmSoundTimer !== undefined && this.alarmSoundTimerMs === interval) return;
+    const startImmediately = this.alarmSoundTimer === undefined;
+    this.stopAlarmSound();
+    const play = () => {
+      if (!this.soundEnabled || !this.hasActiveSoundAlarm) { this.stopAlarmSound(); return; }
+      void this.playAlertSound(true).then(() => { this.soundMessage = ''; }).catch(error => {
+        this.soundMessage = error instanceof Error ? error.message : '警報聲播放失敗';
+      });
+    };
+    this.alarmSoundTimerMs = interval;
+    this.alarmSoundTimer = window.setInterval(play, interval);
+    if (startImmediately) play();
+  }
+
+  private async playAlertSound(automatic = false): Promise<void> {
+    if (!this.soundEnabled || this.soundStarting || this.activeAlarmOscillators.size || (automatic && !this.hasActiveSoundAlarm)) return;
+    const generation = this.audioGeneration;
+    this.soundStarting = true;
+    try {
+      const context = await this.prepareAlertAudio();
+      if (!this.soundEnabled || generation !== this.audioGeneration || (automatic && !this.hasActiveSoundAlarm)) return;
+      for (const offset of [0, .3, .6]) {
+        const oscillator = context.createOscillator(), gain = context.createGain();
+        oscillator.connect(gain); gain.connect(context.destination);
+        oscillator.frequency.value = 880;
+        gain.gain.setValueAtTime(.1, context.currentTime + offset);
+        gain.gain.exponentialRampToValueAtTime(.001, context.currentTime + offset + .18);
+        this.activeAlarmOscillators.add(oscillator);
+        oscillator.onended = () => { this.activeAlarmOscillators.delete(oscillator); oscillator.disconnect(); gain.disconnect(); };
+        oscillator.start(context.currentTime + offset); oscillator.stop(context.currentTime + offset + .2);
+      }
+    } finally { this.soundStarting = false; }
+  }
+
+  private async sendAlertNotification(body: string, test = false): Promise<void> {
+    if (!this.notificationsEnabled || !this.session) return;
+    if (this.db.available) {
+      const result = await this.db.notify(this.session.token, body, test);
+      if (!result?.sent) throw new Error(result?.message || '通知介面未就緒，請重新啟動桌面程式');
+      return;
+    }
+    if (!('Notification' in window)) throw new Error('此瀏覽器不支援桌面通知');
+    const permission = test ? await Notification.requestPermission() : Notification.permission;
+    if (permission !== 'granted') throw new Error('尚未允許通知，請在設定按「測試通知」授權，或使用 Electron 桌面版');
+    new Notification(test ? 'E62 通知測試' : 'E62 異常警報', { body, silent: true });
+  }
+
+  private async emitAlarm(body: string): Promise<void> {
+    const results = await Promise.allSettled([this.sendAlertNotification(body)]);
+    this.alertMessage = results.filter(result => result.status === 'rejected').map(result => result.reason instanceof Error ? result.reason.message : '異常提醒發送失敗').join('；');
+  }
+
+  async testSound(): Promise<void> {
+    if (!this.soundEnabled) { this.testMessage = '請先啟用警報聲音'; return; }
+    try { await this.playAlertSound(); this.testMessage = '已播放測試聲音，請確認喇叭音量'; }
+    catch (error) { this.testMessage = error instanceof Error ? error.message : '聲音測試失敗'; }
   }
   async testNotification(): Promise<void> {
-    if (!('Notification' in window)) { this.testMessage = '此環境不支援通知'; return; }
-    const permission = await Notification.requestPermission();
-    if (permission === 'granted') { new Notification('E62 Angular Dashboard', { body: '測試通知正常' }); this.testMessage = '測試通知已發送'; }
-    else this.testMessage = '通知權限未開啟';
+    if (!this.notificationsEnabled) { this.testMessage = '請先啟用桌面通知'; return; }
+    try { await this.sendAlertNotification('桌面通知測試：收到此訊息表示通知可正常顯示。', true); this.testMessage = '已送出測試通知；若未顯示，請檢查 Windows 通知與勿擾設定'; }
+    catch (error) { this.testMessage = error instanceof Error ? error.message : '通知測試失敗'; }
+  }
+
+  async setAlertEnabled(key: 'alarms.sound_enabled' | 'notifications.enabled', value: boolean): Promise<void> {
+    if (this.alertSettingsSaving) return;
+    this.alertSettingsSaving = true;
+    this.testMessage = '';
+    try {
+      if (key === 'alarms.sound_enabled' && value) void this.prepareAlertAudio().catch(() => {});
+      if (await this.saveDatabaseSetting(key, value)) this.alertMessage = '';
+    } finally { this.alertSettingsSaving = false; }
+  }
+
+  async saveSoundInterval(): Promise<void> {
+    const seconds = Number(this.pendingSoundIntervalSeconds);
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 300) { this.soundMessage = '警報聲間隔需為 1～300 的整數秒'; return; }
+    if (this.alertSettingsSaving) return;
+    this.alertSettingsSaving = true;
+    try {
+      if (await this.saveDatabaseSetting('alarms.sound_interval_seconds', seconds)) this.soundMessage = '';
+    } finally { this.alertSettingsSaving = false; }
   }
 
   async addAccount(): Promise<void> {
     const index = this.accounts.length + 1;
     const account: LocalAccount = { username: `operator${index}`, displayName: `操作員 ${index}`, password: '1234', role: 'Operator', roleCode: 'operator', scope: 'CH001-CH100', active: true };
-    if (this.session && this.db.available) {
-      const rows = await this.db.saveUser(this.session.token, account); if (rows) this.accounts = rows;
-    } else { this.accounts = [...this.accounts, account]; this.saveAccounts(); }
-    this.permissionMessage = '帳號已寫入 SQLite';
+    this.permissionFailed = false;
+    try {
+      if (this.session && this.db.available) {
+        const rows = await this.db.saveUser(this.session.token, account); if (rows) this.accounts = rows;
+      } else { this.accounts = [...this.accounts, account]; this.saveAccounts(); }
+      this.permissionMessage = this.db.available ? '帳號已新增' : '已新增展示帳號（僅限瀏覽器預覽）';
+    } catch (error) { this.permissionFailed = true; this.permissionMessage = error instanceof Error ? error.message : '新增帳號失敗'; }
   }
   async removeAccount(account: LocalAccount): Promise<void> {
     if (account.username === 'admin') return;
@@ -315,7 +500,68 @@ export class AppComponent implements OnInit, OnDestroy {
     } else { this.accounts = this.accounts.filter((item) => item.username !== account.username); this.saveAccounts(); }
     this.permissionMessage = `帳號 ${account.username} 已刪除`;
   }
-  private async loadDatabaseUsers(): Promise<void> { if (this.session) { const rows = await this.db.listUsers(this.session.token); if (rows) this.accounts = rows; } }
+  private async loadDatabaseUsers(): Promise<void> {
+    if (this.session) {
+      const [rows, roles] = await Promise.all([this.db.listUsers(this.session.token), this.db.listRoles(this.session.token)]);
+      if (rows) this.accounts = rows;
+      if (roles) this.accountRoles = roles;
+    }
+  }
+
+  get accountEditingAvailable(): boolean { return this.db.available && Boolean(this.session?.permissions.includes('users.manage')); }
+  get accountAccessProtected(): boolean { return this.accountDraft?.username === 'admin' || this.accountDraft?.username === this.session?.username; }
+  get selectedAccountPermissions(): Array<{ code: string; label: string }> {
+    return this.accountRoles.find(role => role.code === this.accountDraft?.roleCode)?.permissions ?? [];
+  }
+  accountPermissionSummary(account: LocalAccount): string {
+    const role = this.accountRoles.find(item => item.code === account.roleCode);
+    return role ? (role.permissions.length ? `${role.permissions.length} 項權限` : '無授權功能') : '依角色授權';
+  }
+
+  async openAccountEditor(account: LocalAccount, dialog: HTMLDialogElement): Promise<void> {
+    if (this.accountDraft || this.accountSaving) return;
+    this.accountEditorElement = dialog;
+    this.accountDraft = { ...account, password: undefined, active: account.active !== false && account.active !== 0 };
+    this.accountEditorError = '';
+    this.permissionMessage = '';
+    this.accountEditorLoading = true;
+    window.setTimeout(() => { if (this.accountDraft && !dialog.open) dialog.showModal(); }, 0);
+    try {
+      if (!this.accountEditingAvailable || !this.session) throw new Error('請使用 Electron 桌面版及具備帳號管理權限的帳號進行編輯。');
+      const roles = await this.db.listRoles(this.session.token);
+      if (!roles?.length) throw new Error('角色資料讀取失敗，請關閉視窗後重試');
+      this.accountRoles = roles;
+    } catch (error) {
+      this.accountEditorError = error instanceof Error ? error.message : '角色資料讀取失敗';
+      this.accountRoles = [];
+    } finally { this.accountEditorLoading = false; }
+  }
+
+  closeAccountEditor(): void {
+    if (this.accountSaving) return;
+    this.accountEditorElement?.close();
+    this.accountDraft = null;
+  }
+
+  async saveAccountEdit(): Promise<void> {
+    if (!this.accountDraft || !this.session || !this.accountEditingAvailable || this.accountSaving || this.accountEditorLoading) return;
+    const input = { ...this.accountDraft, displayName: this.accountDraft.displayName.trim(), scope: this.accountDraft.scope.trim() || 'all' };
+    if (!input.displayName) { this.accountEditorError = '請輸入顯示名稱'; return; }
+    if (!this.accountRoles.some(role => role.code === input.roleCode)) { this.accountEditorError = '請選擇有效角色'; return; }
+    this.accountSaving = true;
+    this.accountEditorError = '';
+    try {
+      const rows = await this.db.saveUser(this.session.token, input);
+      if (!rows) throw new Error('帳號儲存介面尚未就緒');
+      this.accounts = rows;
+      if (input.username === this.session.username) this.session.displayName = input.displayName;
+      this.permissionFailed = false;
+      this.permissionMessage = `已儲存 ${input.username} 的帳號與權限設定`;
+      this.accountSaving = false;
+      this.closeAccountEditor();
+    } catch (error) { this.accountEditorError = error instanceof Error ? error.message : '帳號儲存失敗'; }
+    finally { this.accountSaving = false; }
+  }
   private loadAccounts(): LocalAccount[] {
     const defaults: LocalAccount[] = [
       { username: 'admin', displayName: '系統管理員', password: 'SGS@1234', role: 'Administrator', roleCode: 'administrator', scope: '全部通道' },
@@ -326,11 +572,75 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   private saveAccounts(): void { localStorage.setItem('edge-angular-accounts', JSON.stringify(this.accounts)); }
 
-  async saveDatabaseSetting(key: string, value: unknown): Promise<void> {
-    if (!this.session || !this.db.available) return;
+  get databaseStatusLabel(): string {
+    return { checking: '檢查中', connected: '已連線', disconnected: '連線異常', browser: '未連線（瀏覽器模式）' }[this.databaseState];
+  }
+
+  get canCleanupDatabase(): boolean {
+    return this.databaseState === 'connected' && !this.databaseCleaning && Boolean(this.session?.permissions.includes('settings.manage'));
+  }
+
+  async checkDatabaseConnection(): Promise<void> {
+    if (!this.db.available) { this.databaseState = 'browser'; return; }
+    if (this.databaseChecking || this.databaseCleaning) return;
+    this.databaseChecking = true;
+    let timeout: number | undefined;
+    try {
+      const status = await Promise.race([
+        this.db.status(),
+        new Promise<never>((_resolve, reject) => { timeout = window.setTimeout(() => reject(new Error('資料庫連線檢查逾時')), 5000); }),
+      ]);
+      if (!status) throw new Error('資料庫介面尚未就緒，請重新啟動桌面程式');
+      this.databaseState = status.connected ? 'connected' : 'disconnected';
+      this.databaseCheckedAt = status.checkedAt;
+      this.databaseError = status.error ?? '';
+    } catch (error) {
+      this.databaseState = 'disconnected';
+      this.databaseCheckedAt = new Date().toISOString();
+      this.databaseError = error instanceof Error ? error.message : '無法連線 SQLite';
+    } finally {
+      window.clearTimeout(timeout);
+      this.databaseChecking = false;
+    }
+  }
+
+  async cleanupDatabase(): Promise<void> {
+    if (!this.canCleanupDatabase || !this.session) return;
+    this.databaseCleaning = true;
+    this.databaseCleanupMessage = '';
+    this.databaseCleanupFailed = false;
+    try {
+      const result = await this.db.cleanupHistory(this.session.token);
+      if (!result) throw new Error('資料庫清理介面尚未就緒');
+      if (result.canceled) { this.databaseCleanupMessage = '已取消清理，資料未變更。'; return; }
+      this.channelPage = 1;
+      this.reportRows = [];
+      this.reportTotal = 0;
+      this.reportMessage = '';
+      this.databaseCleanupMessage = `已清理 ${result.readingsDeleted} 筆感測歷史、${result.logsDeleted} 筆同步紀錄。${result.warning || '已完成空間整理。'} 自動同步將繼續新增資料。`;
+    } catch (error) {
+      this.databaseCleanupFailed = true;
+      this.databaseCleanupMessage = error instanceof Error ? error.message : '清理失敗，請稍後再試';
+    } finally {
+      this.databaseCleaning = false;
+      await this.checkDatabaseConnection();
+    }
+  }
+
+  async saveDatabaseSetting(key: string, value: unknown): Promise<boolean> {
+    if (!this.session) return false;
+    if (!this.db.available) {
+      if (!['alarms.sound_enabled', 'alarms.sound_interval_seconds', 'notifications.enabled', 'api.poll_interval_ms'].includes(key)) return false;
+      this.appSettings[key] = value;
+      this.applyDatabaseSettings();
+      this.settingsMessage = '設定已套用（瀏覽器預覽，僅本次有效）';
+      return true;
+    }
+    this.settingsMessage = '';
     try {
       const settings = await this.db.saveSetting(this.session.token, key, value);
-      if (settings) { this.appSettings = settings; this.applyDatabaseSettings(); this.reportMessage = '設定已寫入 SQLite'; }
-    } catch (error) { this.reportMessage = error instanceof Error ? error.message : '設定儲存失敗'; }
+      if (settings) { this.appSettings = settings; this.applyDatabaseSettings(); this.settingsMessage = '設定已儲存'; return true; }
+    } catch (error) { this.settingsMessage = error instanceof Error ? error.message : '設定儲存失敗'; }
+    return false;
   }
 }

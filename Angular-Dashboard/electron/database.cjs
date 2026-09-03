@@ -5,6 +5,7 @@ const path = require('node:path');
 
 let database;
 const sessions = new Map();
+let cleanupInProgress = false;
 const json = (value) => JSON.stringify(value);
 function parseJson(value, fallback = null) { try { return JSON.parse(value); } catch { return fallback; } }
 
@@ -35,12 +36,16 @@ function initializeDatabase(userDataPath) {
 function seedDatabase() {
   const settings = [
     ['data.mode','mock','api','mock 或 live'],['api.data_url','http://127.0.0.1:8080/api/data','api','EC62 API 資料端點'],['api.auth_token','','api','X-EC62-Token'],
-    ['api.poll_interval_ms',3000,'api','自動同步間隔'],['report.retention_days',365,'report','歷史資料保留天數'],
+    ['api.poll_interval_ms',60000,'api','自動同步間隔'],['report.retention_days',365,'report','歷史資料保留天數'],
     ['dashboard.show_status',true,'display','顯示 Header 狀態列'],['ui.default_view','overview','display','登入後預設頁面'],
     ['notifications.enabled',true,'notification','允許桌面通知'],
+    ['alarms.sound_enabled',true,'notification','異常警報聲音'],
+    ['alarms.sound_interval_seconds',3,'notification','持續警報聲播放間隔（秒）'],
   ];
   const insertSetting = database.prepare('INSERT OR IGNORE INTO app_settings(key,value_json,category,description) VALUES(?,?,?,?)');
   settings.forEach(([key,value,category,description]) => insertSetting.run(key,json(value),category,description));
+  database.prepare("UPDATE app_settings SET value_json='60000',updated_at=CURRENT_TIMESTAMP WHERE key='api.poll_interval_ms' AND value_json NOT IN ('10000','30000','60000')").run();
+  database.prepare("UPDATE app_settings SET value_json='\"settings\"' WHERE key='ui.default_view' AND value_json='\"account\"'").run();
   const insertRole = database.prepare('INSERT OR IGNORE INTO roles(code,display_name,description,is_system) VALUES(?,?,?,?)');
   [['administrator','Administrator','完整系統管理權限',1],['operator','Operator','監控、報表及警報操作',1],['guest','Guest','唯讀監控與報表',1]].forEach((row) => insertRole.run(...row));
   const permissionRows = [
@@ -60,10 +65,11 @@ function seedDatabase() {
   const menus = [
     ['overview','儀錶板','speed','overview',10,'dashboard.view'],['trends','趨勢圖','trending_up','trends',20,'trends.view'],
     ['channels','報表資料','table_view','channels',30,'reports.view'],['alarms','警報中心','notifications_active','alarms',40,'alarms.view'],
-    ['permissions','帳號權限','verified_user','permissions',50,'users.manage'],['account','測試','science','account',60,'tests.run'],['settings','設定','settings','settings',70,'settings.manage'],
+    ['permissions','帳號權限','verified_user','permissions',50,'users.manage'],['settings','設定','settings','settings',70,'settings.manage'],
   ];
   const insertMenu = database.prepare('INSERT INTO menu_items(menu_key,label,icon,route,sort_order,required_permission) VALUES(?,?,?,?,?,?) ON CONFLICT(menu_key) DO UPDATE SET label=excluded.label,icon=excluded.icon,route=excluded.route,sort_order=excluded.sort_order,required_permission=excluded.required_permission');
   menus.forEach((row) => insertMenu.run(...row));
+  database.prepare("UPDATE menu_items SET enabled=0 WHERE menu_key='account'").run();
   if (!database.prepare('SELECT COUNT(*) AS count FROM users').get().count) {
     createUser('admin','系統管理員','SGS@1234','administrator','all');
     createUser('operator1','操作員 1','1234','operator','CH001-CH100');
@@ -88,7 +94,67 @@ function login(username,password) {
   sessions.set(token,session); return {session,settings:settingsObject(),menus:menusForRole(user.role_id)};
 }
 function logout(token){sessions.delete(token);}
-function saveSetting(token,key,value){requireSession(token,'settings.manage');if(!database.prepare('SELECT 1 AS ok FROM app_settings WHERE key=?').get(key))throw new Error(`未知設定：${key}`);database.prepare('UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key=?').run(json(value),key);return settingsObject();}
+function databaseStatus() {
+  try {
+    if (!database) throw new Error('資料庫尚未初始化');
+    database.prepare('SELECT 1 FROM app_settings LIMIT 1').get();
+    return { connected: true, checkedAt: new Date().toISOString() };
+  } catch (error) {
+    return { connected: false, checkedAt: new Date().toISOString(), error: error.message };
+  }
+}
+
+async function cleanupHistory(token, browserWindow, dialog) {
+  requireSession(token, 'settings.manage');
+  if (cleanupInProgress) throw new Error('資料庫清理已在進行中');
+  cleanupInProgress = true;
+  try {
+    const confirmation = await dialog.showMessageBox(browserWindow, {
+      type: 'warning', title: '清理 SQLite 歷史資料',
+      message: '確定清除全部歷史資料？',
+      detail: '將刪除所有感測歷史與同步紀錄，無法復原，請先備份資料庫。\n帳號、權限、系統設定及通道最新狀態會保留。\n清理完成後，自動同步會繼續產生新資料。',
+      buttons: ['取消', '確認清理'], defaultId: 0, cancelId: 0, noLink: true,
+    });
+    if (confirmation.response !== 1) return { canceled: true };
+    requireSession(token, 'settings.manage');
+    let readingsDeleted, logsDeleted;
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      readingsDeleted = Number(database.prepare('DELETE FROM sensor_readings').run().changes);
+      logsDeleted = Number(database.prepare('DELETE FROM ingest_log').run().changes);
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+    // Deletion is already committed; report compaction failure separately.
+    let warning = '';
+    try {
+      database.exec('VACUUM');
+      const checkpoint = database.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+      if (checkpoint.busy) warning = '歷史資料已刪除；其他程式使用中，WAL 空間尚未完全回收。';
+    } catch {
+      warning = '歷史資料已刪除，但空間壓縮未完成；請關閉其他資料庫工具後再試。';
+    }
+    return { canceled: false, readingsDeleted, logsDeleted, warning };
+  } finally {
+    cleanupInProgress = false;
+  }
+}
+function saveSetting(token, key, value) {
+  requireSession(token, 'settings.manage');
+  if (key === 'api.poll_interval_ms' && ![10000, 30000, 60000].includes(value)) throw new Error('刷新頻率僅支援 10、30、60 秒');
+  if (['notifications.enabled', 'alarms.sound_enabled'].includes(key) && typeof value !== 'boolean') throw new Error('開關設定必須為布林值');
+  if (key === 'alarms.sound_interval_seconds' && (!Number.isInteger(value) || value < 1 || value > 300)) throw new Error('警報聲間隔需為 1～300 的整數秒');
+  if (!database.prepare('SELECT 1 AS ok FROM app_settings WHERE key=?').get(key)) throw new Error('未知設定');
+  database.prepare('UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key=?').run(json(value), key);
+  return settingsObject();
+}
+function getAlertSettings(token, test = false) {
+  requireSession(token, test ? 'tests.run' : 'dashboard.view');
+  const settings = settingsObject();
+  return { notificationsEnabled: settings['notifications.enabled'] !== false, soundEnabled: settings['alarms.sound_enabled'] !== false };
+}
 
 function channelState(channel){if(Number(channel.st)===1||channel.pv===null||channel.pv===undefined)return'error';const pv=Number(channel.pv),low=Number(channel.web_lo),high=Number(channel.web_hi);return Number(channel.st)===2||channel.web_alarm||(Number.isFinite(low)&&pv<low)||(Number.isFinite(high)&&pv>high)?'alarm':'ok';}
 function normalizeDate(value){if(!value)return null;const date=new Date(value);return Number.isNaN(date.getTime())?null:date.toISOString();}
@@ -115,8 +181,51 @@ function csvCell(value){const text=value==null?'':String(value);return `"${(/^[=
 async function exportReport(token,filter,browserWindow,dialog){requireSession(token,'reports.export');const where=reportWhere(filter),rows=database.prepare(`SELECT r.channel_id AS id,c.name,r.state,r.pv,r.sv,r.alarm_low AS low,r.alarm_high AS high,r.recorded_at AS time,r.source FROM sensor_readings r JOIN sensor_channels c ON c.channel_id=r.channel_id ${where.sql} ORDER BY r.recorded_at DESC,CAST(r.channel_id AS INTEGER)`).all(...where.values);const result=await dialog.showSaveDialog(browserWindow,{title:'匯出 SQLite 報表',defaultPath:`E62報表_${new Date().toISOString().slice(0,10)}.csv`,filters:[{name:'CSV',extensions:['csv']}]});if(result.canceled||!result.filePath)return{canceled:true};const header=['通道','名稱','狀態','PV (°C)','SV (°C)','警報下限','警報上限','記錄時間','來源'];const content=`\ufeff${header.map(csvCell).join(',')}\r\n${rows.map((row)=>[row.id,row.name,row.state,row.pv,row.sv,row.low,row.high,row.time,row.source].map(csvCell).join(',')).join('\r\n')}`;fs.writeFileSync(result.filePath,content,'utf8');return{canceled:false,filePath:result.filePath,rowCount:rows.length};}
 
 function listUsers(token){requireSession(token,'users.manage');return database.prepare('SELECT u.id,u.username,u.display_name AS displayName,r.code AS roleCode,r.display_name AS role,u.channel_scope AS scope,u.active FROM users u JOIN roles r ON r.id=u.role_id ORDER BY u.id').all();}
-function saveUser(token,input){requireSession(token,'users.manage');const username=String(input.username??'').trim().toLowerCase();if(!/^[a-z0-9._-]{3,32}$/.test(username))throw new Error('帳號格式不正確');if(input.id){database.prepare('UPDATE users SET display_name=?,role_id=(SELECT id FROM roles WHERE code=?),channel_scope=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(String(input.displayName),String(input.roleCode),String(input.scope||'all'),input.active===false?0:1,Number(input.id));if(input.password)database.prepare('UPDATE users SET password_hash=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(hashPassword(String(input.password)),Number(input.id));}else createUser(username,String(input.displayName),String(input.password??''),String(input.roleCode),String(input.scope||'all'));return listUsers(token);}
+function saveUser(token, input) {
+  const actor = requireSession(token, 'users.manage');
+  const username = String(input.username ?? '').trim().toLowerCase();
+  const displayName = String(input.displayName ?? '').trim();
+  const scope = String(input.scope ?? '').trim() || 'all';
+  if (!/^[a-z0-9._-]{3,32}$/.test(username)) throw new Error('帳號格式不正確');
+  if (!displayName || displayName.length > 80) throw new Error('顯示名稱需為 1～80 個字');
+  if (scope.length > 200) throw new Error('通道範圍過長');
+  const role = database.prepare('SELECT id,code,display_name FROM roles WHERE code=?').get(String(input.roleCode));
+  if (!role) throw new Error('角色不存在');
+  if (input.id != null) {
+    const id = Number(input.id);
+    if (!Number.isSafeInteger(id) || id <= 0) throw new Error('帳號 ID 不正確');
+    const target = database.prepare('SELECT id,username,role_id,active,channel_scope FROM users WHERE id=?').get(id);
+    if (!target) throw new Error('帳號不存在');
+    if (username !== target.username) throw new Error('不可變更登入帳號');
+    const active = input.active == null ? target.active : (input.active === false || input.active === 0 ? 0 : 1);
+    if ((target.username === 'admin' || target.id === actor.userId) && (role.id !== target.role_id || !active)) {
+      throw new Error('內建管理員及目前登入帳號不可停用或變更角色');
+    }
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.prepare('UPDATE users SET display_name=?,role_id=?,channel_scope=?,active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?')
+        .run(displayName, role.id, scope, active, id);
+      if (input.password) database.prepare('UPDATE users SET password_hash=?,updated_at=CURRENT_TIMESTAMP WHERE id=?').run(hashPassword(String(input.password)), id);
+      database.exec('COMMIT');
+    } catch (error) { database.exec('ROLLBACK'); throw error; }
+    const accessChanged = role.id !== target.role_id || active !== target.active || scope !== target.channel_scope || Boolean(input.password);
+    for (const [sessionToken, session] of sessions) {
+      if (session.userId !== id) continue;
+      if (accessChanged && sessionToken !== token) sessions.delete(sessionToken);
+      else { session.displayName = displayName; session.channelScope = scope; }
+    }
+  } else {
+    createUser(username, displayName, String(input.password ?? ''), role.code, scope);
+  }
+  return listUsers(token);
+}
 function deleteUser(token,id){const session=requireSession(token,'users.manage'),target=database.prepare('SELECT username FROM users WHERE id=?').get(Number(id));if(!target||target.username==='admin'||Number(id)===session.userId)throw new Error('此帳號不可刪除');database.prepare('DELETE FROM users WHERE id=?').run(Number(id));return listUsers(token);}
-function listRoles(token){requireSession(token,'users.manage');return database.prepare('SELECT code,display_name AS displayName FROM roles ORDER BY id').all();}
+function listRoles(token) {
+  requireSession(token, 'users.manage');
+  return database.prepare('SELECT id,code,display_name AS displayName FROM roles ORDER BY id').all().map(role => ({
+    code: role.code, displayName: role.displayName,
+    permissions: database.prepare('SELECT p.code,p.display_name AS label FROM permissions p JOIN role_permissions rp ON rp.permission_id=p.id WHERE rp.role_id=? ORDER BY p.id').all(role.id),
+  }));
+}
 
-module.exports={initializeDatabase,settingsObject,login,logout,saveSetting,ingestSnapshotAuthorized,syncApi,latestSnapshot,queryReport,exportReport,listUsers,saveUser,deleteUser,listRoles};
+module.exports={initializeDatabase,getAlertSettings,databaseStatus,cleanupHistory,settingsObject,login,logout,saveSetting,ingestSnapshotAuthorized,syncApi,latestSnapshot,queryReport,exportReport,listUsers,saveUser,deleteUser,listRoles};

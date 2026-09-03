@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('e62Db', {
   bootstrap: () => ipcRenderer.invoke('db:bootstrap'),
+  status: () => ipcRenderer.invoke('db:status'),
+  notify: (token, body, test = false) => ipcRenderer.invoke('alerts:notify', { token, body, test }),
+  cleanupHistory: (token) => ipcRenderer.invoke('db:cleanup-history', { token }),
   login: (username,password) => ipcRenderer.invoke('auth:login',{username,password}),
   logout: (token) => ipcRenderer.invoke('auth:logout',token),
   saveSetting: (token,key,value) => ipcRenderer.invoke('settings:save',{token,key,value}),
