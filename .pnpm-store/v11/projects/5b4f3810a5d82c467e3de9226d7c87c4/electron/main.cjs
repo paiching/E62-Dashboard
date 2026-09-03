@@ -11,11 +11,17 @@ let databasePath = '';
 function registerIpc() {
   ipcMain.handle('db:bootstrap', () => ({ settings: db.settingsObject(), databasePath }));
   ipcMain.handle('db:status', () => db.databaseStatus());
+  ipcMain.handle('editor:focus', (event) => {
+    if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents || !mainWindow.isFocused()) return false;
+    mainWindow.webContents.focus();
+    return true;
+  });
   ipcMain.handle('alerts:notify', (_event, input) => notify(input.token, input.body, input.test === true));
   ipcMain.handle('db:cleanup-history', (_event, input) => db.cleanupHistory(input.token, mainWindow, dialog));
   ipcMain.handle('auth:login', (_event, input) => db.login(input.username, input.password));
   ipcMain.handle('auth:logout', (_event, token) => db.logout(token));
   ipcMain.handle('settings:save', (_event, input) => db.saveSetting(input.token, input.key, input.value));
+  ipcMain.handle('channels:save-limits', (_event, input) => db.saveChannelLimits(input.token, input.channelId, input.limits));
   ipcMain.handle('readings:ingest', (_event, input) => db.ingestSnapshotAuthorized(input.token, input.snapshot, input.source));
   ipcMain.handle('api:sync', (_event, token) => db.syncApi(token));
   ipcMain.handle('readings:latest', (_event, token) => db.latestSnapshot(token));
@@ -49,6 +55,10 @@ function createWindow() {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) mainWindow.show();
   };
   mainWindow.once('ready-to-show', showWindow);
+  // Restore Chromium's keyboard target when Windows returns focus to the app.
+  mainWindow.on('focus', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.focus();
+  });
   setTimeout(showWindow, 2500);
   mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'angular-dashboard', 'browser', 'index.html'));
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

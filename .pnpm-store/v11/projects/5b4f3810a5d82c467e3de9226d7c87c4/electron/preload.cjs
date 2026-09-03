@@ -2,11 +2,13 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('e62Db', {
   bootstrap: () => ipcRenderer.invoke('db:bootstrap'),
   status: () => ipcRenderer.invoke('db:status'),
+  focusEditor: () => ipcRenderer.invoke('editor:focus'),
   notify: (token, body, test = false) => ipcRenderer.invoke('alerts:notify', { token, body, test }),
   cleanupHistory: (token) => ipcRenderer.invoke('db:cleanup-history', { token }),
   login: (username,password) => ipcRenderer.invoke('auth:login',{username,password}),
   logout: (token) => ipcRenderer.invoke('auth:logout',token),
   saveSetting: (token,key,value) => ipcRenderer.invoke('settings:save',{token,key,value}),
+  saveChannelLimits: (token,channelId,limits) => ipcRenderer.invoke('channels:save-limits',{token,channelId,limits}),
   ingestSnapshot: (token,snapshot,source='mock') => ipcRenderer.invoke('readings:ingest',{token,snapshot,source}),
   syncApi: (token) => ipcRenderer.invoke('api:sync',token),
   latestChannels: (token) => ipcRenderer.invoke('readings:latest',token),

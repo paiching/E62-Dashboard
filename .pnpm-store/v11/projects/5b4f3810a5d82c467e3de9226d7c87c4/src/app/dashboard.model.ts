@@ -3,6 +3,7 @@ export type SensorState = 'ok' | 'alarm' | 'error';
 export type AlarmFilter = 'all' | 'alarm' | 'error';
 
 export interface HistoryPoint { time: string; value: number; }
+export interface AlarmLimits { low: number; high: number; }
 export interface SensorChannel {
   id: string;
   name: string;
@@ -17,6 +18,7 @@ export interface SensorChannel {
   count: number;
   web_lo: number;
   web_hi: number;
+  limit_source?: 'default' | 'custom';
   web_alarm: boolean;
   web_alarm_ack: boolean;
 }

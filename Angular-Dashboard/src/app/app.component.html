@@ -56,7 +56,7 @@
             <article *ngFor="let channel of visibleSensors" class="sensor-card" [ngClass]="state(channel)">
               <div class="sensor-card-heading"><div><span>CH{{ channel.id }}</span><button class="sensor-name-button" (click)="openSensor(channel)">{{ channel.name }}</button></div><span class="status-badge" [ngClass]="state(channel)">{{ statusLabel(state(channel)) }}</span></div>
               <div class="sensor-value"><strong>{{ formatValue(channel.pv) }}</strong><span>°C</span></div>
-              <div class="sensor-range"><span>範圍</span><b>{{ formatValue(channel.web_lo) }} ～ {{ formatValue(channel.web_hi) }} °C</b></div>
+              <div class="sensor-range"><span>{{ channel.limit_source==='custom' ? '個別設定' : '預設值' }}</span><b>{{ formatValue(channel.web_lo) }} ～ {{ formatValue(channel.web_hi) }} °C</b></div>
               <div class="sensor-card-footer"><span>SV {{ formatValue(channel.sv) }} °C</span><time>{{ formatTime(channel.time) }}</time></div>
               <div class="sensor-card-details" *ngIf="displayMode!=='compact'"><div><span>MIN</span><b>{{ formatValue(channel.min) }} °C</b></div><div><span>AVG</span><b>{{ formatValue(channel.avg) }} °C</b></div><div><span>MAX</span><b>{{ formatValue(channel.max) }} °C</b></div><div><span>筆數</span><b>{{ channel.count }}</b></div></div>
             </article>
@@ -95,6 +95,17 @@
       <ng-container *ngIf="view==='settings'">
         <div class="permission-save-message" *ngIf="settingsMessage" role="status">{{ settingsMessage }}</div>
         <section class="settings-cards">
+          <article class="panel info-card default-limits-card">
+            <span><mat-icon>settings</mat-icon></span><div>
+              <h3>預設溫度上下限</h3>
+              <p>尚未個別儲存的通道皆使用此值；已個別設定的通道不受影響。</p>
+              <p class="limit-source-note">目前預設值：{{ formatValue(defaultLimits.low) }} ～ {{ formatValue(defaultLimits.high) }} °C</p>
+              <div class="limit-inputs"><label>預設溫度下限（°C）<input type="number" step="0.1" [(ngModel)]="defaultLow" [disabled]="!canManageLimits || limitsSaving"></label><label>預設溫度上限（°C）<input type="number" step="0.1" [(ngModel)]="defaultHigh" [disabled]="!canManageLimits || limitsSaving"></label></div>
+              <button class="secondary-button" (click)="saveDefaultLimits()" [disabled]="!canManageLimits || limitsSaving">{{ limitsSaving ? '儲存中…' : '儲存預設值' }}</button>
+              <p role="status">{{ limitsAccessMessage }}</p>
+              <p *ngIf="defaultLimitsMessage" [class.form-error]="defaultLimitsFailed" role="status">{{ defaultLimitsMessage }}</p>
+            </div>
+          </article>
           <article class="panel info-card alert-settings-card">
             <span><mat-icon>volume_up</mat-icon></span><div>
               <div class="alert-setting-heading"><h3>異常警報聲音</h3><label class="switch"><input type="checkbox" aria-label="啟用警報聲音" [ngModel]="soundEnabled" (ngModelChange)="setAlertEnabled('alarms.sound_enabled', $event)" [disabled]="alertSettingsSaving"><span></span></label></div>
@@ -142,12 +153,20 @@
   </div>
 </div>
 
-<div class="modal-backdrop" *ngIf="selectedSensor" (mousedown)="$event.target===$event.currentTarget && (selectedSensor=null)">
+<div class="modal-backdrop" *ngIf="selectedSensor && session" (mousedown)="onSensorBackdropMouseDown($event)">
   <section class="sensor-modal" [ngClass]="state(selectedSensor)">
-    <header class="sensor-modal-header"><div><span>CH{{ selectedSensor.id }}</span><div><h2>{{ selectedSensor.name }}</h2><small>{{ formatDateTime(selectedSensor.time) }}</small></div></div><button class="icon-button" (click)="selectedSensor=null" aria-label="關閉"><mat-icon>close</mat-icon></button></header>
+    <header class="sensor-modal-header"><div><span>CH{{ selectedSensor.id }}</span><div><h2>{{ selectedSensor.name }}</h2><small>{{ formatDateTime(selectedSensor.time) }}</small></div></div><button class="icon-button" (click)="selectedSensor=null" [disabled]="limitsSaving" aria-label="關閉"><mat-icon>close</mat-icon></button></header>
     <div class="sensor-modal-reading"><strong>{{ formatValue(selectedSensor.pv) }}</strong><span>°C</span><span class="status-badge" [ngClass]="state(selectedSensor)">{{ statusLabel(state(selectedSensor)) }}</span></div>
     <div class="sensor-stats"><div><span>MIN</span><b>{{ formatValue(selectedSensor.min) }} °C</b></div><div><span>AVG</span><b>{{ formatValue(selectedSensor.avg) }} °C</b></div><div><span>MAX</span><b>{{ formatValue(selectedSensor.max) }} °C</b></div></div>
-    <div class="sensor-settings-form"><div class="sensor-settings-title">警報範圍設定</div><div class="settings-form"><label>溫度下限<input type="number" [(ngModel)]="editLow" step="0.1"></label><label>溫度上限<input type="number" [(ngModel)]="editHigh" step="0.1"></label></div><div class="modal-message" *ngIf="modalMessage">{{ modalMessage }}</div><div class="modal-actions"><button class="alarm-ack-button" (click)="acknowledgeAlarm()" [disabled]="state(selectedSensor)!=='alarm'">確認警報</button><button class="primary-button" (click)="saveSensorLimits()">儲存設定</button></div></div>
+    <div class="sensor-settings-form">
+      <div class="sensor-settings-title">警報範圍設定</div>
+      <p class="limit-source-note">目前使用{{ selectedSensor.limit_source==='custom' ? '個別設定' : '預設值' }}：{{ formatValue(selectedSensor.web_lo) }} ～ {{ formatValue(selectedSensor.web_hi) }} °C<br>全域預設值：{{ formatValue(defaultLimits.low) }} ～ {{ formatValue(defaultLimits.high) }} °C</p>
+      <div class="limit-inputs"><label>溫度下限（°C）<input #sensorLowInput type="number" [(ngModel)]="editLow" step="0.1" [disabled]="!canManageLimits || limitsSaving"></label><label>溫度上限（°C）<input type="number" [(ngModel)]="editHigh" step="0.1" [disabled]="!canManageLimits || limitsSaving"></label></div>
+      <p class="limit-source-note">儲存後改用個別設定；尚未儲存的輸入不會生效。</p>
+      <p class="limit-source-note" role="status">{{ limitsAccessMessage }}</p>
+      <div class="modal-message" [class.form-error]="modalFailed" *ngIf="modalMessage" role="status">{{ modalMessage }}</div>
+      <div class="modal-actions"><button class="alarm-ack-button" (click)="acknowledgeAlarm()" [disabled]="limitsSaving || state(selectedSensor)!=='alarm'">確認警報</button><button class="secondary-button" (click)="saveSensorLimits(true)" [disabled]="!canManageLimits || limitsSaving || selectedSensor.limit_source!=='custom'">恢復預設值</button><button class="primary-button" (click)="saveSensorLimits()" [disabled]="!canManageLimits || limitsSaving">{{ limitsSaving ? '儲存中…' : '儲存個別設定' }}</button></div>
+    </div>
   </section>
 </div>
 
@@ -171,6 +190,6 @@
   </form>
 </dialog>
 
-<div class="refresh-rate-backdrop" *ngIf="refreshDialogOpen" (mousedown)="$event.target===$event.currentTarget && (refreshDialogOpen=false)">
+<div class="refresh-rate-backdrop" *ngIf="refreshDialogOpen" (mousedown)="onRefreshBackdropMouseDown($event)">
   <section class="refresh-rate-dialog"><header><div><mat-icon>refresh</mat-icon><h2>設定刷新頻率</h2></div><button class="icon-button" (click)="refreshDialogOpen=false" aria-label="關閉"><mat-icon>close</mat-icon></button></header><p>Dashboard 將依照選擇的間隔，自動更新 Sensor 資料。</p><div class="refresh-rate-options"><button *ngFor="let option of refreshOptions" [class.active]="pendingRefreshSeconds===option" (click)="pendingRefreshSeconds=option">{{ option }}<span>秒</span></button></div><footer><button class="secondary-button" (click)="refreshDialogOpen=false">取消</button><button class="primary-button" (click)="applyRefreshRate()">套用設定</button></footer></section>
 </div>

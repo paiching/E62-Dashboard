@@ -100,7 +100,7 @@ const compiled = ts.transpileModule(`class AlertHarness { ${methods.map(node => 
 
 test('refresh actually dispatches new alerts and deduplicates failed API requests', async () => {
   const Harness = new Function('createMockChannels', `${compiled}; return AlertHarness;`)(() => [{ id: '1', st: 2, history: [] }]);
-  const subject = Object.assign(new Harness(), { session: { token: 'test' }, channels: [], appSettings: {}, db: { available: false }, alarmTracker: new AlarmTracker(), state, statusLabel: value => value, syncAlarmSound() {} });
+  const subject = Object.assign(new Harness(), { session: { token: 'test' }, channels: [], appSettings: {}, db: { available: false }, alarmTracker: new AlarmTracker(), state, statusLabel: value => value, syncAlarmSound() {}, refreshLimitDisplay() {} });
   const alerts = [];
   subject.emitAlarm = async body => alerts.push(body);
   await subject.refreshData(); await subject.refreshData();

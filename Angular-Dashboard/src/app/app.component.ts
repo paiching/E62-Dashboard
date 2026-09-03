@@ -1,9 +1,9 @@
 import { CommonModule } from '@angular/common';
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
-import { AlarmFilter, LocalAccount, SensorChannel, SensorState, UserSession, ViewKey, sensorState } from './dashboard.model';
+import { AlarmFilter, AlarmLimits, LocalAccount, SensorChannel, SensorState, UserSession, ViewKey, sensorState } from './dashboard.model';
 import { createMockChannels } from './mock-data';
 import { AlarmTracker } from './alert-state';
 import { AccountRole, DatabaseMenu, DatabaseService, ReportFilter, ReportRow } from './database.service';
@@ -87,8 +87,16 @@ export class AppComponent implements OnInit, OnDestroy {
   refreshDialogOpen = false;
   pendingRefreshSeconds = 60;
   selectedSensor: SensorChannel | null = null;
-  editLow = 0;
-  editHigh = 0;
+  editLow: number | null = 0;
+  editHigh: number | null = 0;
+  channelLimits: Record<string, AlarmLimits> = {};
+  defaultLow: number | null = 2;
+  defaultHigh: number | null = 8;
+  limitsSaving = false;
+  defaultLimitsMessage = '';
+  defaultLimitsFailed = false;
+  modalFailed = false;
+  @ViewChild('sensorLowInput') private sensorLowInput?: ElementRef<HTMLInputElement>;
   modalMessage = '';
 
   alarmFilter: AlarmFilter = 'all';
@@ -146,6 +154,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   async login(): Promise<void> {
+    if (this.db.desktopExpected && !this.db.available) {
+      this.loginError = '桌面資料庫連線模組未載入，無法登入。請完整關閉所有 E62 視窗，重新建置並啟動桌面版。';
+      return;
+    }
     this.alarmSnapshotReady = false;
     this.stopAlarmSound();
     this.alarmTracker.reset();
@@ -157,6 +169,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.session = result.session;
         this.navItems = result.menus.filter(menu => menu.key !== 'account').map((menu: DatabaseMenu) => ({ key: menu.key, label: menu.label, icon: menu.icon }));
         this.appSettings = result.settings;
+        this.channelLimits = result.channelLimits ?? {};
         this.applyDatabaseSettings();
         this.view = (String(this.appSettings['ui.default_view'] ?? 'overview') as ViewKey);
         if (this.view === 'account') this.view = 'settings';
@@ -215,6 +228,7 @@ export class AppComponent implements OnInit, OnDestroy {
         }
       }
       if (sessionToken !== this.session?.token) return;
+      this.refreshLimitDisplay();
       if (this.trendPaused) this.channels = this.channels.map(channel => ({ ...channel, history: previous.get(channel.id) ?? channel.history }));
       this.syncError = '';
       this.alarmSnapshotReady = Boolean(this.session);
@@ -240,6 +254,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private applyDatabaseSettings(): void {
+    this.defaultLow = this.defaultLimits.low;
+    this.defaultHigh = this.defaultLimits.high;
+    this.refreshLimitDisplay();
     const interval = Number(this.appSettings['api.poll_interval_ms'] ?? 60000);
     this.pollIntervalMs = this.refreshOptions.includes(interval / 1000) ? interval : 60000;
     this.appSettings['api.poll_interval_ms'] = this.pollIntervalMs;
@@ -274,13 +291,103 @@ export class AppComponent implements OnInit, OnDestroy {
   selectOverviewFilter(filter: 'all' | SensorState): void { this.overviewFilter = filter; this.overviewPage = 0; }
   showAlarms(filter: AlarmFilter): void { this.alarmFilter = filter; this.navigate('alarms'); }
   openSensor(channel: SensorChannel): void {
-    this.selectedSensor = channel; this.editLow = channel.web_lo; this.editHigh = channel.web_hi; this.modalMessage = '';
+    if (this.limitsSaving) return;
+    const current = this.channels.find(item => item.id === channel.id) ?? channel;
+    const limits = this.channelLimits[current.id] ?? this.defaultLimits;
+    this.selectedSensor = { ...current, web_lo: limits.low, web_hi: limits.high, limit_source: this.channelLimits[current.id] ? 'custom' : 'default' };
+    this.editLow = limits.low; this.editHigh = limits.high; this.modalMessage = ''; this.modalFailed = false;
+    this.focusSensorEditor();
   }
-  saveSensorLimits(): void {
-    if (!this.selectedSensor || this.editLow >= this.editHigh) { this.modalMessage = '下限必須小於上限'; return; }
-    this.channels = this.channels.map((channel) => channel.id === this.selectedSensor?.id ? { ...channel, web_lo: this.editLow, web_hi: this.editHigh } : channel);
-    this.selectedSensor = this.channels.find((channel) => channel.id === this.selectedSensor?.id) ?? null;
-    this.modalMessage = '感應器設定已儲存於本機展示資料';
+  onSensorBackdropMouseDown(event: MouseEvent): void {
+    // Angular treats a false listener result as preventDefault(), which blocks
+    // input focus and native number spinners on clicks inside the dialog.
+    if (event.target === event.currentTarget && !this.limitsSaving) this.selectedSensor = null;
+  }
+  onRefreshBackdropMouseDown(event: MouseEvent): void {
+    if (event.target === event.currentTarget) this.refreshDialogOpen = false;
+  }
+  private focusSensorEditor(): void {
+    const id = this.selectedSensor?.id;
+    window.setTimeout(async () => {
+      if (!this.session || this.selectedSensor?.id !== id) return;
+      // Do not take focus back if the user has already chosen an input.
+      if (document.activeElement?.matches('input, select, textarea, [contenteditable="true"]')) return;
+      await this.ensureEditorFocus();
+      if (this.selectedSensor?.id !== id || !this.canManageLimits || this.limitsSaving) return;
+      if (document.activeElement?.matches('input, select, textarea, [contenteditable="true"]')) return;
+      this.sensorLowInput?.nativeElement.focus({ preventScroll: true });
+    }, 0);
+  }
+  async ensureEditorFocus(): Promise<void> {
+    // Called once when opening the editor, never by input clicks or polling.
+    try { await this.db.focusEditor(); } catch { /* Older desktop builds do not expose this optional helper. */ }
+  }
+  get limitsAccessMessage(): string {
+    if (!this.db.available) return this.db.desktopExpected ? '桌面連線模組未載入，請完整關閉程式後重新啟動。' : '瀏覽器預覽沒有桌面資料庫連線，請由 Electron 啟動。';
+    if (!this.session?.permissions.includes('settings.manage')) return `目前帳號 ${this.session?.username ?? ''} 沒有系統設定權限，請重新登入確認。`;
+    if (this.limitsSaving) return '正在等待資料庫完成儲存…';
+    return `可編輯 · ${this.session.username} · 桌面連線模組已載入`;
+  }
+  get defaultLimits(): AlarmLimits {
+    const limits = this.appSettings['alarms.default_limits'] as AlarmLimits | undefined;
+    return limits && Number.isFinite(limits.low) && Number.isFinite(limits.high) && limits.low < limits.high ? limits : { low: 2, high: 8 };
+  }
+  get canManageLimits(): boolean { return Boolean(this.db.available && this.session?.permissions.includes('settings.manage')); }
+  private refreshLimitDisplay(): void {
+    this.channels = this.channels.map((channel): SensorChannel => {
+      const limits = this.channelLimits[channel.id] ?? this.defaultLimits;
+      return { ...channel, web_lo: limits.low, web_hi: limits.high, limit_source: this.channelLimits[channel.id] ? 'custom' : 'default' };
+    });
+    if (this.selectedSensor) this.selectedSensor = this.channels.find(channel => channel.id === this.selectedSensor?.id) ?? this.selectedSensor;
+  }
+  private notifyLimitAlarms(): void {
+    this.syncAlarmSound();
+    if (!this.session || !this.alarmSnapshotReady) return;
+    const changed = this.alarmTracker.collect(this.channels, channel => this.state(channel));
+    if (changed.length) void this.emitAlarm(`警報範圍已更新，偵測到 ${changed.length} 點新異常。`);
+  }
+  async saveSensorLimits(useDefault = false): Promise<void> {
+    if (!this.selectedSensor || this.limitsSaving) return;
+    this.modalFailed = true;
+    if (!this.canManageLimits || !this.session) { this.modalMessage = this.limitsAccessMessage; return; }
+    if (!useDefault && (typeof this.editLow !== 'number' || typeof this.editHigh !== 'number' || !Number.isFinite(this.editLow) || !Number.isFinite(this.editHigh) || this.editLow >= this.editHigh)) { this.modalMessage = '請輸入有效數值，且下限必須小於上限'; return; }
+    const token = this.session.token, id = this.selectedSensor.id;
+    const limits = useDefault ? null : { low: this.editLow!, high: this.editHigh! };
+    this.limitsSaving = true; this.modalMessage = '';
+    try {
+      const saved = await this.db.saveChannelLimits(token, id, limits);
+      if (!saved) throw new Error('未收到儲存結果，請重新啟動桌面程式');
+      if (this.session?.token !== token) return;
+      this.channelLimits = saved;
+      this.refreshLimitDisplay();
+      if (this.selectedSensor?.id === id) {
+        const effective = saved[id] ?? this.defaultLimits;
+        this.editLow = effective.low; this.editHigh = effective.high;
+        this.modalMessage = useDefault ? '已恢復預設值，後續隨全域預設更新' : '個別上下限已儲存，刷新或重開後仍會保留';
+        this.modalFailed = false;
+      }
+      this.notifyLimitAlarms();
+    } catch (error) { this.modalMessage = error instanceof Error ? error.message : '上下限儲存失敗'; }
+    finally { this.limitsSaving = false; }
+  }
+  async saveDefaultLimits(): Promise<void> {
+    if (this.limitsSaving) return;
+    this.defaultLimitsFailed = true;
+    if (!this.canManageLimits || !this.session) { this.defaultLimitsMessage = this.limitsAccessMessage; return; }
+    if (typeof this.defaultLow !== 'number' || typeof this.defaultHigh !== 'number' || !Number.isFinite(this.defaultLow) || !Number.isFinite(this.defaultHigh) || this.defaultLow >= this.defaultHigh) { this.defaultLimitsMessage = '請輸入有效數值，且下限必須小於上限'; return; }
+    const token = this.session.token;
+    this.limitsSaving = true; this.defaultLimitsMessage = '';
+    try {
+      const settings = await this.db.saveSetting(token, 'alarms.default_limits', { low: this.defaultLow, high: this.defaultHigh });
+      if (!settings) throw new Error('未收到儲存結果，請重新啟動桌面程式');
+      if (this.session?.token !== token) return;
+      this.appSettings = settings;
+      this.applyDatabaseSettings();
+      this.defaultLimitsMessage = '預設上下限已儲存，未個別設定的通道已套用';
+      this.defaultLimitsFailed = false;
+      this.notifyLimitAlarms();
+    } catch (error) { this.defaultLimitsMessage = error instanceof Error ? error.message : '預設上下限儲存失敗'; }
+    finally { this.limitsSaving = false; }
   }
   acknowledgeAlarm(): void {
     if (!this.selectedSensor) return;

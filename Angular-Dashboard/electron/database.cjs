@@ -23,6 +23,7 @@ function initializeDatabase(userDataPath) {
     CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT NOT NULL UNIQUE COLLATE NOCASE,display_name TEXT NOT NULL,password_hash TEXT NOT NULL,role_id INTEGER NOT NULL REFERENCES roles(id),channel_scope TEXT NOT NULL DEFAULT 'all',active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS menu_items(id INTEGER PRIMARY KEY AUTOINCREMENT,menu_key TEXT NOT NULL UNIQUE,label TEXT NOT NULL,icon TEXT NOT NULL,route TEXT NOT NULL,sort_order INTEGER NOT NULL,enabled INTEGER NOT NULL DEFAULT 1,required_permission TEXT);
     CREATE TABLE IF NOT EXISTS sensor_channels(channel_id TEXT PRIMARY KEY,name TEXT NOT NULL,sv REAL,alarm_low REAL,alarm_high REAL,last_pv REAL,last_state TEXT NOT NULL DEFAULT 'ok',last_seen_at TEXT,raw_json TEXT NOT NULL DEFAULT '{}',updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS channel_limits(channel_id TEXT PRIMARY KEY REFERENCES sensor_channels(channel_id),low REAL NOT NULL,high REAL NOT NULL,CHECK(low < high));
     CREATE TABLE IF NOT EXISTS sensor_readings(id INTEGER PRIMARY KEY AUTOINCREMENT,batch_id TEXT NOT NULL,channel_id TEXT NOT NULL,pv REAL,sv REAL,state TEXT NOT NULL,alarm_low REAL,alarm_high REAL,recorded_at TEXT NOT NULL,received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,source TEXT NOT NULL DEFAULT 'api',raw_json TEXT NOT NULL,FOREIGN KEY(channel_id) REFERENCES sensor_channels(channel_id));
     CREATE INDEX IF NOT EXISTS idx_readings_recorded ON sensor_readings(recorded_at DESC);
     CREATE INDEX IF NOT EXISTS idx_readings_channel_time ON sensor_readings(channel_id,recorded_at DESC);
@@ -30,6 +31,7 @@ function initializeDatabase(userDataPath) {
     CREATE TABLE IF NOT EXISTS ingest_log(id INTEGER PRIMARY KEY AUTOINCREMENT,batch_id TEXT NOT NULL UNIQUE,source TEXT NOT NULL,source_url TEXT,channel_count INTEGER NOT NULL,received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL,error_message TEXT);
   `);
   seedDatabase();
+  refreshStoredLimits();
   return dbPath;
 }
 
@@ -41,6 +43,7 @@ function seedDatabase() {
     ['notifications.enabled',true,'notification','允許桌面通知'],
     ['alarms.sound_enabled',true,'notification','異常警報聲音'],
     ['alarms.sound_interval_seconds',3,'notification','持續警報聲播放間隔（秒）'],
+    ['alarms.default_limits',{low:2,high:8},'alarm','未個別設定通道的預設溫度上下限'],
   ];
   const insertSetting = database.prepare('INSERT OR IGNORE INTO app_settings(key,value_json,category,description) VALUES(?,?,?,?)');
   settings.forEach(([key,value,category,description]) => insertSetting.run(key,json(value),category,description));
@@ -91,7 +94,7 @@ function login(username,password) {
   if(!user||!verifyPassword(String(password),user.password_hash))throw new Error('帳號或密碼錯誤');
   const token=randomUUID(); const permissions=permissionsForRole(user.role_id);
   const session={token,userId:user.id,username:user.username,displayName:user.display_name,role:user.role_name,roleCode:user.role_code,roleId:user.role_id,channelScope:user.channel_scope,permissions};
-  sessions.set(token,session); return {session,settings:settingsObject(),menus:menusForRole(user.role_id)};
+  sessions.set(token,session); return {session,settings:settingsObject(),channelLimits:channelLimitsObject(),menus:menusForRole(user.role_id)};
 }
 function logout(token){sessions.delete(token);}
 function databaseStatus() {
@@ -143,6 +146,16 @@ async function cleanupHistory(token, browserWindow, dialog) {
 }
 function saveSetting(token, key, value) {
   requireSession(token, 'settings.manage');
+  if (key === 'alarms.default_limits') {
+    validateLimits(value);
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.prepare('UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key=?').run(json({low:value.low,high:value.high}), key);
+      refreshStoredLimits();
+      database.exec('COMMIT');
+    } catch (error) { database.exec('ROLLBACK'); throw error; }
+    return settingsObject();
+  }
   if (key === 'api.poll_interval_ms' && ![10000, 30000, 60000].includes(value)) throw new Error('刷新頻率僅支援 10、30、60 秒');
   if (['notifications.enabled', 'alarms.sound_enabled'].includes(key) && typeof value !== 'boolean') throw new Error('開關設定必須為布林值');
   if (key === 'alarms.sound_interval_seconds' && (!Number.isInteger(value) || value < 1 || value > 300)) throw new Error('警報聲間隔需為 1～300 的整數秒');
@@ -157,9 +170,43 @@ function getAlertSettings(token, test = false) {
 }
 
 function channelState(channel){if(Number(channel.st)===1||channel.pv===null||channel.pv===undefined)return'error';const pv=Number(channel.pv),low=Number(channel.web_lo),high=Number(channel.web_hi);return Number(channel.st)===2||channel.web_alarm||(Number.isFinite(low)&&pv<low)||(Number.isFinite(high)&&pv>high)?'alarm':'ok';}
+function validateLimits(value) {
+  if (!value || !Number.isFinite(value.low) || !Number.isFinite(value.high) || value.low >= value.high) throw new Error('請輸入有效數值，且下限必須小於上限');
+}
+function channelLimitsObject() {
+  return Object.fromEntries(database.prepare('SELECT channel_id,low,high FROM channel_limits').all().map(row => [row.channel_id,{low:row.low,high:row.high}]));
+}
+function applyChannelLimits(channels) {
+  const defaults = settingsObject()['alarms.default_limits'];
+  const overrides = channelLimitsObject();
+  return channels.map(channel => {
+    const id = String(channel.id ?? '').padStart(3, '0');
+    const limits = overrides[id] ?? defaults;
+    return {...channel,id,web_lo:limits.low,web_hi:limits.high,limit_source:overrides[id] ? 'custom' : 'default'};
+  });
+}
+function refreshStoredLimits() {
+  const channels = database.prepare('SELECT channel_id,raw_json FROM sensor_channels').all().map(row => ({...parseJson(row.raw_json,{}),id:row.channel_id}));
+  const update = database.prepare('UPDATE sensor_channels SET alarm_low=?,alarm_high=?,last_state=?,raw_json=?,updated_at=CURRENT_TIMESTAMP WHERE channel_id=?');
+  for (const channel of applyChannelLimits(channels)) update.run(channel.web_lo,channel.web_hi,channelState(channel),json(channel),channel.id);
+}
+function saveChannelLimits(token, channelId, limits) {
+  requireSession(token, 'settings.manage');
+  const id = String(channelId ?? '').padStart(3, '0');
+  if (!database.prepare('SELECT 1 FROM sensor_channels WHERE channel_id=?').get(id)) throw new Error('通道不存在，請先刷新資料');
+  if (limits !== null) validateLimits(limits);
+  database.exec('BEGIN IMMEDIATE');
+  try {
+    if (limits === null) database.prepare('DELETE FROM channel_limits WHERE channel_id=?').run(id);
+    else database.prepare('INSERT INTO channel_limits(channel_id,low,high) VALUES(?,?,?) ON CONFLICT(channel_id) DO UPDATE SET low=excluded.low,high=excluded.high').run(id,limits.low,limits.high);
+    refreshStoredLimits();
+    database.exec('COMMIT');
+  } catch (error) { database.exec('ROLLBACK'); throw error; }
+  return channelLimitsObject();
+}
 function normalizeDate(value){if(!value)return null;const date=new Date(value);return Number.isNaN(date.getTime())?null:date.toISOString();}
 function ingestSnapshot(snapshot,source='api',sourceUrl=null){
-  const channels=Array.isArray(snapshot?.channels)?snapshot.channels:[];if(!channels.length)throw new Error('API 回應沒有 channels 資料');
+  const channels=applyChannelLimits(Array.isArray(snapshot?.channels)?snapshot.channels:[]);if(!channels.length)throw new Error('API 回應沒有 channels 資料');
   const batchId=randomUUID(),recordedAt=normalizeDate(snapshot.time)||new Date().toISOString();
   const upsert=database.prepare(`INSERT INTO sensor_channels(channel_id,name,sv,alarm_low,alarm_high,last_pv,last_state,last_seen_at,raw_json,updated_at) VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(channel_id) DO UPDATE SET name=excluded.name,sv=excluded.sv,alarm_low=excluded.alarm_low,alarm_high=excluded.alarm_high,last_pv=excluded.last_pv,last_state=excluded.last_state,last_seen_at=excluded.last_seen_at,raw_json=excluded.raw_json,updated_at=CURRENT_TIMESTAMP`);
   const insert=database.prepare('INSERT INTO sensor_readings(batch_id,channel_id,pv,sv,state,alarm_low,alarm_high,recorded_at,source,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?)');
@@ -172,8 +219,8 @@ function ingestSnapshot(snapshot,source='api',sourceUrl=null){
   return{batchId,channelCount:channels.length,recordedAt};
 }
 function ingestSnapshotAuthorized(token,snapshot,source='mock'){requireSession(token,'dashboard.view');return ingestSnapshot(snapshot,source,null);}
-async function syncApi(token){requireSession(token,'dashboard.view');const settings=settingsObject(),url=String(settings['api.data_url']),apiToken=String(settings['api.auth_token']??'');const response=await fetch(url,{cache:'no-store',headers:apiToken?{'X-EC62-Token':apiToken}:{}});if(!response.ok)throw new Error(`API ${response.status}: ${response.statusText}`);const snapshot=await response.json();return{snapshot,result:ingestSnapshot(snapshot,'api',url)};}
-function latestSnapshot(token){requireSession(token,'dashboard.view');return database.prepare('SELECT channel_id AS id,name,last_pv AS pv,sv,last_state,alarm_low AS web_lo,alarm_high AS web_hi,last_seen_at AS time,raw_json FROM sensor_channels ORDER BY CAST(channel_id AS INTEGER)').all().map((row)=>({...parseJson(row.raw_json,{}),id:row.id,name:row.name,pv:row.pv,sv:row.sv,web_lo:row.web_lo,web_hi:row.web_hi,time:row.time}));}
+async function syncApi(token){requireSession(token,'dashboard.view');const settings=settingsObject(),url=String(settings['api.data_url']),apiToken=String(settings['api.auth_token']??'');const response=await fetch(url,{cache:'no-store',headers:apiToken?{'X-EC62-Token':apiToken}:{}});if(!response.ok)throw new Error(`API ${response.status}: ${response.statusText}`);const snapshot=await response.json();requireSession(token,'dashboard.view');const result=ingestSnapshot(snapshot,'api',url);return{snapshot:{...snapshot,channels:applyChannelLimits(snapshot.channels)},result};}
+function latestSnapshot(token){requireSession(token,'dashboard.view');return applyChannelLimits(database.prepare('SELECT channel_id AS id,name,last_pv AS pv,sv,last_state,alarm_low AS web_lo,alarm_high AS web_hi,last_seen_at AS time,raw_json FROM sensor_channels ORDER BY CAST(channel_id AS INTEGER)').all().map((row)=>({...parseJson(row.raw_json,{}),id:row.id,name:row.name,pv:row.pv,sv:row.sv,web_lo:row.web_lo,web_hi:row.web_hi,time:row.time})));}
 
 function reportWhere(filter={}){const clauses=[],values=[];if(filter.query){clauses.push('(r.channel_id LIKE ? OR c.name LIKE ?)');values.push(`%${filter.query}%`,`%${filter.query}%`);}if(filter.state&&filter.state!=='all'){clauses.push('r.state=?');values.push(filter.state);}if(filter.from){clauses.push('r.recorded_at>=?');values.push(normalizeDate(`${filter.from}T00:00:00`)||filter.from);}if(filter.to){clauses.push('r.recorded_at<=?');values.push(normalizeDate(`${filter.to}T23:59:59.999`)||filter.to);}return{sql:clauses.length?`WHERE ${clauses.join(' AND ')}`:'',values};}
 function queryReport(token,filter={}){requireSession(token,'reports.view');const where=reportWhere(filter),limit=Math.min(1000,Math.max(1,Number(filter.limit)||50)),offset=Math.max(0,Number(filter.offset)||0);const total=database.prepare(`SELECT COUNT(*) AS count FROM sensor_readings r JOIN sensor_channels c ON c.channel_id=r.channel_id ${where.sql}`).get(...where.values).count;const rows=database.prepare(`SELECT r.id,r.batch_id,r.channel_id AS id,c.name,r.pv,r.sv,r.state,r.alarm_low AS web_lo,r.alarm_high AS web_hi,r.recorded_at AS time,r.source FROM sensor_readings r JOIN sensor_channels c ON c.channel_id=r.channel_id ${where.sql} ORDER BY r.recorded_at DESC,CAST(r.channel_id AS INTEGER) LIMIT ? OFFSET ?`).all(...where.values,limit,offset);return{rows,total,limit,offset};}
@@ -228,4 +275,4 @@ function listRoles(token) {
   }));
 }
 
-module.exports={initializeDatabase,getAlertSettings,databaseStatus,cleanupHistory,settingsObject,login,logout,saveSetting,ingestSnapshotAuthorized,syncApi,latestSnapshot,queryReport,exportReport,listUsers,saveUser,deleteUser,listRoles};
+module.exports={initializeDatabase,getAlertSettings,databaseStatus,cleanupHistory,settingsObject,login,logout,saveSetting,saveChannelLimits,ingestSnapshotAuthorized,syncApi,latestSnapshot,queryReport,exportReport,listUsers,saveUser,deleteUser,listRoles};
