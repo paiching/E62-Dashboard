@@ -81,7 +81,7 @@ test('persistent default/individual limits and ingestion (isolated database)', a
       const syncing = db.syncApi(admin.token);
       db.saveChannelLimits(admin.token, '001', {low:4,high:7});
       db.saveSetting(admin.token, 'alarms.default_limits', {low:3,high:9});
-      resolveFetch({ok:true,json:async () => ({channels:[sample('001'),sample('002')]})});
+      resolveFetch({ok:true,json:async () => ({schema_version:1,status_version:1,st_version:2,status:'connected',collected_at:new Date().toISOString(),channel_count:2,age_seconds:0,stale:false,channels:[sample('001'),sample('002')]})});
       const result = await syncing;
       assert.deepEqual(result.snapshot.channels.map(c => [c.web_lo,c.web_hi,c.limit_source]), [[4,7,'custom'],[3,9,'default']]);
     } finally { global.fetch = originalFetch; }

@@ -8,13 +8,14 @@ export interface SensorChannel {
   id: string;
   name: string;
   pv: number | null;
-  sv: number;
+  sv: number | null;
+  status?: 'ok' | 'read_error';
   st: number;
   time: string;
   history: HistoryPoint[];
-  min: number;
-  max: number;
-  avg: number;
+  min: number | null;
+  max: number | null;
+  avg: number | null;
   count: number;
   web_lo: number;
   web_hi: number;
@@ -43,8 +44,8 @@ export interface LocalAccount {
 }
 
 export function sensorState(channel: SensorChannel): SensorState {
-  if (channel.st === 1 || channel.pv === null) return 'error';
+  if (channel.status === 'read_error' || channel.st === 2 || channel.pv === null) return 'error';
   if (channel.web_alarm_ack) return 'ok';
-  if (channel.st === 2 || channel.web_alarm || channel.pv < channel.web_lo || channel.pv > channel.web_hi) return 'alarm';
+  if (channel.st === 3 || channel.web_alarm || channel.pv < channel.web_lo || channel.pv > channel.web_hi) return 'alarm';
   return 'ok';
 }

@@ -14,6 +14,7 @@
 - `sensor_channels` 保存每個通道的最新狀態。
 - 報表畫面從 `sensor_readings` 查詢，CSV 也由相同查詢條件輸出。
 - API、刷新頻率、保留天數及畫面設定保存在 `app_settings`。
+- Live 模式預設讀取 `http://192.168.68.50:8088/api/v1/latest`，支援 API schema/status v1 與 Channel `st` v2。
 - 帳號密碼、角色、權限與可見菜單保存在 `users`、`roles`、`permissions`、`role_permissions`、`menu_items`。
 - 密碼以含隨機 salt 的 scrypt 雜湊保存，不儲存明文。
 

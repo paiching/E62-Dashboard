@@ -9,6 +9,17 @@ export interface ReportResult { rows: ReportRow[]; total: number; limit: number;
 export interface DatabaseStatus { connected: boolean; checkedAt: string; error?: string; }
 export interface CleanupResult { canceled: boolean; readingsDeleted?: number; logsDeleted?: number; warning?: string; }
 export interface AccountRole { code: string; displayName: string; permissions: Array<{ code: string; label: string }>; }
+export interface ApiSnapshot {
+  schema_version: number;
+  status_version: number;
+  st_version: number;
+  status: string;
+  collected_at: string;
+  channel_count: number;
+  age_seconds: number;
+  stale: boolean;
+  channels: SensorChannel[];
+}
 
 interface E62DatabaseBridge {
   bootstrap(): Promise<{ settings: Record<string, unknown>; databasePath: string }>;
@@ -21,7 +32,7 @@ interface E62DatabaseBridge {
   saveSetting(token: string, key: string, value: unknown): Promise<Record<string, unknown>>;
   saveChannelLimits(token: string, channelId: string, limits: AlarmLimits | null): Promise<Record<string, AlarmLimits>>;
   ingestSnapshot(token: string, snapshot: unknown, source?: string): Promise<{ batchId: string; channelCount: number }>;
-  syncApi(token: string): Promise<{ snapshot: { channels: SensorChannel[] }; result: unknown }>;
+  syncApi(token: string): Promise<{ snapshot: ApiSnapshot; result: unknown }>;
   latestChannels(token: string): Promise<SensorChannel[]>;
   queryReport(token: string, filter: ReportFilter): Promise<ReportResult>;
   exportReport(token: string, filter: ReportFilter): Promise<{ canceled: boolean; filePath?: string; rowCount?: number }>;

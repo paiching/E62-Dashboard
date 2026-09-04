@@ -6,6 +6,7 @@ const path = require('node:path');
 let database;
 const sessions = new Map();
 let cleanupInProgress = false;
+const DEFAULT_API_URL = 'http://192.168.68.50:8088/api/v1/latest';
 const json = (value) => JSON.stringify(value);
 function parseJson(value, fallback = null) { try { return JSON.parse(value); } catch { return fallback; } }
 
@@ -37,7 +38,7 @@ function initializeDatabase(userDataPath) {
 
 function seedDatabase() {
   const settings = [
-    ['data.mode','mock','api','mock 或 live'],['api.data_url','http://127.0.0.1:8080/api/data','api','EC62 API 資料端點'],['api.auth_token','','api','X-EC62-Token'],
+    ['data.mode','live','api','mock 或 live'],['api.data_url',DEFAULT_API_URL,'api','EC62 API 資料端點'],['api.auth_token','','api','X-EC62-Token'],
     ['api.poll_interval_ms',60000,'api','自動同步間隔'],['report.retention_days',365,'report','歷史資料保留天數'],
     ['dashboard.show_status',true,'display','顯示 Header 狀態列'],['ui.default_view','overview','display','登入後預設頁面'],
     ['notifications.enabled',true,'notification','允許桌面通知'],
@@ -47,6 +48,11 @@ function seedDatabase() {
   ];
   const insertSetting = database.prepare('INSERT OR IGNORE INTO app_settings(key,value_json,category,description) VALUES(?,?,?,?)');
   settings.forEach(([key,value,category,description]) => insertSetting.run(key,json(value),category,description));
+  const legacyUrl = database.prepare("SELECT value_json FROM app_settings WHERE key='api.data_url'").get()?.value_json;
+  if (legacyUrl === json('http://127.0.0.1:8080/api/data')) {
+    database.prepare("UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key='api.data_url'").run(json(DEFAULT_API_URL));
+    database.prepare("UPDATE app_settings SET value_json='\"live\"',updated_at=CURRENT_TIMESTAMP WHERE key='data.mode' AND value_json='\"mock\"'").run();
+  }
   database.prepare("UPDATE app_settings SET value_json='60000',updated_at=CURRENT_TIMESTAMP WHERE key='api.poll_interval_ms' AND value_json NOT IN ('10000','30000','60000')").run();
   database.prepare("UPDATE app_settings SET value_json='\"settings\"' WHERE key='ui.default_view' AND value_json='\"account\"'").run();
   const insertRole = database.prepare('INSERT OR IGNORE INTO roles(code,display_name,description,is_system) VALUES(?,?,?,?)');
@@ -169,7 +175,7 @@ function getAlertSettings(token, test = false) {
   return { notificationsEnabled: settings['notifications.enabled'] !== false, soundEnabled: settings['alarms.sound_enabled'] !== false };
 }
 
-function channelState(channel){if(Number(channel.st)===1||channel.pv===null||channel.pv===undefined)return'error';const pv=Number(channel.pv),low=Number(channel.web_lo),high=Number(channel.web_hi);return Number(channel.st)===2||channel.web_alarm||(Number.isFinite(low)&&pv<low)||(Number.isFinite(high)&&pv>high)?'alarm':'ok';}
+function channelState(channel){if(channel.status==='read_error'||Number(channel.st)===2||channel.pv===null||channel.pv===undefined)return'error';const pv=Number(channel.pv),low=Number(channel.web_lo),high=Number(channel.web_hi);return Number(channel.st)===3||channel.web_alarm||(Number.isFinite(low)&&pv<low)||(Number.isFinite(high)&&pv>high)?'alarm':'ok';}
 function validateLimits(value) {
   if (!value || !Number.isFinite(value.low) || !Number.isFinite(value.high) || value.low >= value.high) throw new Error('請輸入有效數值，且下限必須小於上限');
 }
@@ -180,7 +186,7 @@ function applyChannelLimits(channels) {
   const defaults = settingsObject()['alarms.default_limits'];
   const overrides = channelLimitsObject();
   return channels.map(channel => {
-    const id = String(channel.id ?? '').padStart(3, '0');
+    const id = String(channel.id ?? '').trim();
     const limits = overrides[id] ?? defaults;
     return {...channel,id,web_lo:limits.low,web_hi:limits.high,limit_source:overrides[id] ? 'custom' : 'default'};
   });
@@ -192,7 +198,7 @@ function refreshStoredLimits() {
 }
 function saveChannelLimits(token, channelId, limits) {
   requireSession(token, 'settings.manage');
-  const id = String(channelId ?? '').padStart(3, '0');
+  const id = String(channelId ?? '').trim();
   if (!database.prepare('SELECT 1 FROM sensor_channels WHERE channel_id=?').get(id)) throw new Error('通道不存在，請先刷新資料');
   if (limits !== null) validateLimits(limits);
   database.exec('BEGIN IMMEDIATE');
@@ -205,22 +211,36 @@ function saveChannelLimits(token, channelId, limits) {
   return channelLimitsObject();
 }
 function normalizeDate(value){if(!value)return null;const date=new Date(value);return Number.isNaN(date.getTime())?null:date.toISOString();}
+function validateApiSnapshot(snapshot){
+  if(!snapshot||typeof snapshot!=='object')throw new Error('API 回應格式錯誤');
+  if(Number(snapshot.schema_version)!==1||Number(snapshot.status_version)!==1||Number(snapshot.st_version)!==2)throw new Error(`API 版本不支援 (schema=${snapshot.schema_version}, status=${snapshot.status_version}, st=${snapshot.st_version})`);
+  if(!Array.isArray(snapshot.channels)||!snapshot.channels.length)throw new Error('API 回應沒有 channels 資料');
+  if(snapshot.channel_count!=null&&Number(snapshot.channel_count)!==snapshot.channels.length)throw new Error('API channel_count 與 channels 數量不符');
+}
+function hydrateChannels(channels){
+  const stats=database.prepare('SELECT MIN(pv) AS min,MAX(pv) AS max,AVG(pv) AS avg,COUNT(pv) AS count FROM sensor_readings WHERE channel_id=?');
+  const history=database.prepare('SELECT recorded_at AS time,pv AS value FROM sensor_readings WHERE channel_id=? AND pv IS NOT NULL ORDER BY recorded_at DESC,id DESC LIMIT 500');
+  return applyChannelLimits(channels).map(channel=>{
+    const id=String(channel.id??'').trim(),summary=stats.get(id),points=history.all(id).reverse();
+    return{...channel,id,time:normalizeDate(channel.time)||null,history:points,min:summary.min,max:summary.max,avg:summary.avg,count:Number(summary.count),web_alarm:Boolean(channel.web_alarm),web_alarm_ack:Boolean(channel.web_alarm_ack)};
+  });
+}
 function ingestSnapshot(snapshot,source='api',sourceUrl=null){
   const channels=applyChannelLimits(Array.isArray(snapshot?.channels)?snapshot.channels:[]);if(!channels.length)throw new Error('API 回應沒有 channels 資料');
-  const batchId=randomUUID(),recordedAt=normalizeDate(snapshot.time)||new Date().toISOString();
+  const batchId=randomUUID(),recordedAt=normalizeDate(snapshot.collected_at)||normalizeDate(snapshot.time)||new Date().toISOString();
   const upsert=database.prepare(`INSERT INTO sensor_channels(channel_id,name,sv,alarm_low,alarm_high,last_pv,last_state,last_seen_at,raw_json,updated_at) VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(channel_id) DO UPDATE SET name=excluded.name,sv=excluded.sv,alarm_low=excluded.alarm_low,alarm_high=excluded.alarm_high,last_pv=excluded.last_pv,last_state=excluded.last_state,last_seen_at=excluded.last_seen_at,raw_json=excluded.raw_json,updated_at=CURRENT_TIMESTAMP`);
   const insert=database.prepare('INSERT INTO sensor_readings(batch_id,channel_id,pv,sv,state,alarm_low,alarm_high,recorded_at,source,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?)');
   database.exec('BEGIN IMMEDIATE');
   try{
-    for(const channel of channels){const id=String(channel.id??'').padStart(3,'0'),state=channelState(channel),rowTime=normalizeDate(channel.time)||recordedAt;const pv=channel.pv==null?null:Number(channel.pv),sv=channel.sv==null?null:Number(channel.sv),low=channel.web_lo==null?null:Number(channel.web_lo),high=channel.web_hi==null?null:Number(channel.web_hi);upsert.run(id,String(channel.name??`CH${id}`),sv,low,high,pv,state,rowTime,json(channel));insert.run(batchId,id,pv,sv,state,low,high,rowTime,source,json(channel));}
+    for(const channel of channels){const id=String(channel.id??'').trim();if(!id)throw new Error('API Channel 缺少 id');const state=channelState(channel),rowTime=normalizeDate(channel.time)||recordedAt;const pv=channel.pv==null?null:Number(channel.pv),sv=channel.sv==null?null:Number(channel.sv),low=channel.web_lo==null?null:Number(channel.web_lo),high=channel.web_hi==null?null:Number(channel.web_hi);const normalized={...channel,id,time:rowTime};upsert.run(id,String(channel.name??`CH${id}`),sv,low,high,pv,state,rowTime,json(normalized));insert.run(batchId,id,pv,sv,state,low,high,rowTime,source,json(normalized));}
     database.prepare('INSERT INTO ingest_log(batch_id,source,source_url,channel_count,status) VALUES(?,?,?,?,?)').run(batchId,source,sourceUrl,channels.length,'success');
     const days=Math.max(1,Number(settingsObject()['report.retention_days']??365));database.prepare("DELETE FROM sensor_readings WHERE recorded_at < datetime('now', ?)").run(`-${days} days`);database.exec('COMMIT');
   }catch(error){database.exec('ROLLBACK');throw error;}
   return{batchId,channelCount:channels.length,recordedAt};
 }
 function ingestSnapshotAuthorized(token,snapshot,source='mock'){requireSession(token,'dashboard.view');return ingestSnapshot(snapshot,source,null);}
-async function syncApi(token){requireSession(token,'dashboard.view');const settings=settingsObject(),url=String(settings['api.data_url']),apiToken=String(settings['api.auth_token']??'');const response=await fetch(url,{cache:'no-store',headers:apiToken?{'X-EC62-Token':apiToken}:{}});if(!response.ok)throw new Error(`API ${response.status}: ${response.statusText}`);const snapshot=await response.json();requireSession(token,'dashboard.view');const result=ingestSnapshot(snapshot,'api',url);return{snapshot:{...snapshot,channels:applyChannelLimits(snapshot.channels)},result};}
-function latestSnapshot(token){requireSession(token,'dashboard.view');return applyChannelLimits(database.prepare('SELECT channel_id AS id,name,last_pv AS pv,sv,last_state,alarm_low AS web_lo,alarm_high AS web_hi,last_seen_at AS time,raw_json FROM sensor_channels ORDER BY CAST(channel_id AS INTEGER)').all().map((row)=>({...parseJson(row.raw_json,{}),id:row.id,name:row.name,pv:row.pv,sv:row.sv,web_lo:row.web_lo,web_hi:row.web_hi,time:row.time})));}
+async function syncApi(token){requireSession(token,'dashboard.view');const settings=settingsObject(),url=String(settings['api.data_url']),apiToken=String(settings['api.auth_token']??'');const response=await fetch(url,{cache:'no-store',headers:apiToken?{'X-EC62-Token':apiToken}:{}});if(!response.ok)throw new Error(`API ${response.status}: ${response.statusText}`);const snapshot=await response.json();validateApiSnapshot(snapshot);requireSession(token,'dashboard.view');const result=ingestSnapshot(snapshot,'api',url);const current=snapshot.channels.map(channel=>({...channel,time:normalizeDate(channel.time)||result.recordedAt}));return{snapshot:{...snapshot,collected_at:result.recordedAt,channels:hydrateChannels(current)},result};}
+function latestSnapshot(token){requireSession(token,'dashboard.view');return hydrateChannels(database.prepare('SELECT channel_id AS id,name,last_pv AS pv,sv,last_state,alarm_low AS web_lo,alarm_high AS web_hi,last_seen_at AS time,raw_json FROM sensor_channels ORDER BY CAST(channel_id AS INTEGER)').all().map((row)=>({...parseJson(row.raw_json,{}),id:row.id,name:row.name,pv:row.pv,sv:row.sv,web_lo:row.web_lo,web_hi:row.web_hi,time:row.time})));}
 
 function reportWhere(filter={}){const clauses=[],values=[];if(filter.query){clauses.push('(r.channel_id LIKE ? OR c.name LIKE ?)');values.push(`%${filter.query}%`,`%${filter.query}%`);}if(filter.state&&filter.state!=='all'){clauses.push('r.state=?');values.push(filter.state);}if(filter.from){clauses.push('r.recorded_at>=?');values.push(normalizeDate(`${filter.from}T00:00:00`)||filter.from);}if(filter.to){clauses.push('r.recorded_at<=?');values.push(normalizeDate(`${filter.to}T23:59:59.999`)||filter.to);}return{sql:clauses.length?`WHERE ${clauses.join(' AND ')}`:'',values};}
 function queryReport(token,filter={}){requireSession(token,'reports.view');const where=reportWhere(filter),limit=Math.min(1000,Math.max(1,Number(filter.limit)||50)),offset=Math.max(0,Number(filter.offset)||0);const total=database.prepare(`SELECT COUNT(*) AS count FROM sensor_readings r JOIN sensor_channels c ON c.channel_id=r.channel_id ${where.sql}`).get(...where.values).count;const rows=database.prepare(`SELECT r.id,r.batch_id,r.channel_id AS id,c.name,r.pv,r.sv,r.state,r.alarm_low AS web_lo,r.alarm_high AS web_hi,r.recorded_at AS time,r.source FROM sensor_readings r JOIN sensor_channels c ON c.channel_id=r.channel_id ${where.sql} ORDER BY r.recorded_at DESC,CAST(r.channel_id AS INTEGER) LIMIT ? OFFSET ?`).all(...where.values,limit,offset);return{rows,total,limit,offset};}

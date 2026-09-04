@@ -223,26 +223,33 @@ erDiagram
 
 ```json
 {
-  "time": "2026-09-02T08:30:00.000Z",
+  "schema_version": 1,
+  "status_version": 1,
+  "st_version": 2,
+  "status": "connected",
+  "collected_at": "2026-09-04T10:30:00+08:00",
+  "channel_count": 1,
   "channels": [{
-    "id": "001",
-    "name": "冷藏庫 A",
+    "id": "01",
+    "name": "CH01",
     "pv": 4.2,
     "sv": 4.0,
-    "web_lo": 2.0,
-    "web_hi": 8.0,
-    "st": 0,
-    "web_alarm": false,
-    "time": "2026-09-02T08:29:59.500Z"
-  }]
+    "status": "ok",
+    "st": 0
+  }],
+  "age_seconds": 2.5,
+  "stale": false
 }
 ```
 
-- `channels` 必須為非空陣列；`id` 應固定且唯一。
+- 預設 Live 端點為 `GET http://192.168.68.50:8088/api/v1/latest`；既有資料庫若仍使用舊預設網址，啟動時會自動移轉。
+- 目前只接受 `schema_version: 1`、`status_version: 1`、`st_version: 2`。
+- `channels` 必須為非空陣列；`id` 原樣保留且應固定、唯一；`channel_count` 必須與陣列數量相同。
 - 數值欄位應為 number 或 `null`。
-- 時間應用含時區 ISO 8601；無效或缺少通道時間時使用快照時間，再無效則用本機目前 UTC。
+- `collected_at` 應用含時區 ISO 8601，並作為各通道的採集時間；無效時才使用本機目前 UTC。
 - Live 模式使用 GET；有 Token 時傳送 `X-EC62-Token`。
-- `st === 1` 或 PV 缺值為 `error`；`st === 2`、`web_alarm` 或 PV 超限為 `alarm`；其餘為 `ok`。
+- `channels[].status === 'read_error'`、`st === 2` 或 PV 缺值為 `error`；`st === 3`、本機警報或 PV 超限為 `alarm`；`st === 1` 是補傳保留碼，不單獨視為異常。
+- API 不再提供的趨勢、MIN、MAX、AVG 與 COUNT 由 SQLite `sensor_readings` 歷史資料補齊。
 
 ## 11. 報表與 CSV
 
@@ -302,4 +309,3 @@ erDiagram
 | `electron/preload.cjs` | Renderer 可用的受限 API |
 | `src/app/database.service.ts` | Angular IPC service |
 | `src/app/app.component.ts` | 登入、同步、設定、報表及帳號畫面邏輯 |
-

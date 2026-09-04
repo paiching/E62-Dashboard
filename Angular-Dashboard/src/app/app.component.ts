@@ -47,6 +47,10 @@ export class AppComponent implements OnInit, OnDestroy {
   databaseCleanupFailed = false;
   private databaseTimer?: number;
   syncError = '';
+  apiStatus = 'unknown';
+  apiStale = false;
+  apiAgeSeconds = 0;
+  apiCollectedAt = '';
   reportMessage = '';
   settingsMessage = '';
   username = localStorage.getItem('edge-angular-last-username') ?? '';
@@ -220,7 +224,13 @@ export class AppComponent implements OnInit, OnDestroy {
     try {
       if (this.session && this.db.available && this.appSettings['data.mode'] === 'live') {
         const synced = await this.db.syncApi(this.session.token);
-        if (synced) this.channels = synced.snapshot.channels;
+        if (synced) {
+          this.channels = synced.snapshot.channels;
+          this.apiStatus = synced.snapshot.status;
+          this.apiStale = synced.snapshot.stale;
+          this.apiAgeSeconds = synced.snapshot.age_seconds;
+          this.apiCollectedAt = synced.snapshot.collected_at;
+        }
       } else {
         this.channels = createMockChannels().map((channel) => ({ ...channel, history: previous.get(channel.id) ?? channel.history }));
         if (this.session && this.db.available) {
@@ -275,7 +285,10 @@ export class AppComponent implements OnInit, OnDestroy {
   get alarmCount(): number { return this.channels.filter((channel) => this.state(channel) === 'alarm').length; }
   get errorCount(): number { return this.channels.filter((channel) => this.state(channel) === 'error').length; }
   state(channel: SensorChannel): SensorState { return sensorState(channel); }
-  statusLabel(state: SensorState): string { return ({ ok: '正常', alarm: '警報', error: '斷線' })[state]; }
+  statusLabel(state: SensorState): string { return ({ ok: '正常', alarm: '警報', error: '異常' })[state]; }
+  apiStatusLabel(status: string): string {
+    return ({ disconnected: '未連線', connecting: '正在連線', connected: '已連線', reconnecting: '正在重新連線', no_com_port: '無可用 USB COM 埠', com_busy: 'COM 被占用或拒絕存取', rtu_no_response: 'USB 已開啟，但 RTU 無回應', io_error: 'I/O 錯誤，將自動重連', connection_failed: 'USB／COM 連線失敗', unknown: '狀態不明' } as Record<string, string>)[status] ?? `狀態不明 (${status})`;
+  }
   formatValue(value: number | null): string { return value === null || !Number.isFinite(value) ? '--' : value.toFixed(1); }
   formatTime(value: string | Date): string { return new Date(value).toLocaleTimeString('zh-TW', { hour12: false }); }
   formatDateTime(value: string | Date): string { return new Date(value).toLocaleString('zh-TW', { hour12: false }); }
@@ -440,7 +453,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!result) return;
       this.reportTotal = result.total;
       this.reportRows = result.rows.map((row: ReportRow) => ({
-        id: row.id, name: row.name, pv: row.pv, sv: row.sv ?? 0, st: row.state === 'error' ? 1 : row.state === 'alarm' ? 2 : 0,
+        id: row.id, name: row.name, pv: row.pv, sv: row.sv, st: row.state === 'error' ? 2 : row.state === 'alarm' ? 3 : 0,
         time: row.time, history: [], min: row.pv ?? 0, max: row.pv ?? 0, avg: row.pv ?? 0, count: 1,
         web_lo: row.web_lo ?? 0, web_hi: row.web_hi ?? 0, web_alarm: row.state === 'alarm', web_alarm_ack: false,
       }));
