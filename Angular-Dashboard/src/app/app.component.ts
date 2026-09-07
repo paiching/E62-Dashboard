@@ -3,7 +3,7 @@ import { Component, ElementRef, OnDestroy, OnInit, ViewChild } from '@angular/co
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer } from '@angular/platform-browser';
 import { MatIconModule, MatIconRegistry } from '@angular/material/icon';
-import { AlarmFilter, AlarmLimits, LocalAccount, SensorChannel, SensorState, UserSession, ViewKey, sensorState } from './dashboard.model';
+import { AlarmFilter, AlarmLimits, LocalAccount, SensorChannel, SensorState, UserSession, ViewKey, sensorReason, sensorState } from './dashboard.model';
 import { createMockChannels } from './mock-data';
 import { AlarmTracker } from './alert-state';
 import { AccountRole, DatabaseMenu, DatabaseService, ReportFilter, ReportRow } from './database.service';
@@ -216,14 +216,14 @@ export class AppComponent implements OnInit, OnDestroy {
     localStorage.setItem('edge-angular-show-status', this.showDashboardStatus ? '1' : '0');
   }
 
-  async refreshData(): Promise<void> {
+  async refreshData(persist = true): Promise<void> {
     if (this.databaseCleaning || this.refreshing) return;
     this.refreshing = true;
     const sessionToken = this.session?.token;
     const previous = new Map(this.channels.map((channel) => [channel.id, channel.history]));
     try {
       if (this.session && this.db.available && this.appSettings['data.mode'] === 'live') {
-        const synced = await this.db.syncApi(this.session.token);
+        const synced = await this.db.syncApi(this.session.token, persist);
         if (synced) {
           this.channels = synced.snapshot.channels;
           this.apiStatus = synced.snapshot.status;
@@ -233,7 +233,7 @@ export class AppComponent implements OnInit, OnDestroy {
         }
       } else {
         this.channels = createMockChannels().map((channel) => ({ ...channel, history: previous.get(channel.id) ?? channel.history }));
-        if (this.session && this.db.available) {
+        if (this.session && this.db.available && persist) {
           await this.db.ingestSnapshot(this.session.token, { time: new Date().toISOString(), channels: this.channels }, 'mock');
         }
       }
@@ -285,6 +285,7 @@ export class AppComponent implements OnInit, OnDestroy {
   get alarmCount(): number { return this.channels.filter((channel) => this.state(channel) === 'alarm').length; }
   get errorCount(): number { return this.channels.filter((channel) => this.state(channel) === 'error').length; }
   state(channel: SensorChannel): SensorState { return sensorState(channel); }
+  reason(channel: SensorChannel): string | null { return sensorReason(channel); }
   statusLabel(state: SensorState): string { return ({ ok: '正常', alarm: '警報', error: '異常' })[state]; }
   apiStatusLabel(status: string): string {
     return ({ disconnected: '未連線', connecting: '正在連線', connected: '已連線', reconnecting: '正在重新連線', no_com_port: '無可用 USB COM 埠', com_busy: 'COM 被占用或拒絕存取', rtu_no_response: 'USB 已開啟，但 RTU 無回應', io_error: 'I/O 錯誤，將自動重連', connection_failed: 'USB／COM 連線失敗', unknown: '狀態不明' } as Record<string, string>)[status] ?? `狀態不明 (${status})`;
@@ -302,6 +303,11 @@ export class AppComponent implements OnInit, OnDestroy {
   get overviewPages(): number[] { return Array.from({ length: Math.max(1, Math.ceil(this.filteredOverview.length / 50)) }, (_, index) => index); }
   get visibleSensors(): SensorChannel[] { return this.filteredOverview.slice(this.overviewPage * 50, (this.overviewPage + 1) * 50); }
   selectOverviewFilter(filter: 'all' | SensorState): void { this.overviewFilter = filter; this.overviewPage = 0; }
+  get dataRefreshing(): boolean { return this.refreshing; }
+  async refreshOverview(): Promise<void> {
+    this.selectOverviewFilter('all');
+    await this.refreshData(false);
+  }
   showAlarms(filter: AlarmFilter): void { this.alarmFilter = filter; this.navigate('alarms'); }
   openSensor(channel: SensorChannel): void {
     if (this.limitsSaving) return;
@@ -455,7 +461,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.reportRows = result.rows.map((row: ReportRow) => ({
         id: row.id, name: row.name, pv: row.pv, sv: row.sv, st: row.state === 'error' ? 2 : row.state === 'alarm' ? 3 : 0,
         time: row.time, history: [], min: row.pv ?? 0, max: row.pv ?? 0, avg: row.pv ?? 0, count: 1,
-        web_lo: row.web_lo ?? 0, web_hi: row.web_hi ?? 0, web_alarm: row.state === 'alarm', web_alarm_ack: false,
+        web_lo: row.web_lo ?? 0, web_hi: row.web_hi ?? 0, web_alarm: row.state === 'alarm', web_alarm_ack: false, alarm_reason: row.reason,
       }));
       this.reportMessage = `完成查詢，共 ${result.total} 筆，耗時 ${(performance.now() - startedAt).toFixed(1)} ms`;
     } catch (error) { this.reportMessage = error instanceof Error ? error.message : '報表查詢失敗'; }
@@ -488,9 +494,44 @@ export class AppComponent implements OnInit, OnDestroy {
     else if (this.selectedTrendIds.length < 8) this.selectedTrendIds = [...this.selectedTrendIds, id];
   }
   trendPolyline(channel: SensorChannel): string {
-    const selected = this.selectedTrendChannels.flatMap((item) => item.history.map((point) => point.value));
-    const min = Math.min(...selected) - 1; const max = Math.max(...selected) + 1; const range = Math.max(1, max - min);
-    return channel.history.slice(-this.trendPointLimit).map((point, index, points) => `${68 + index * (904 / Math.max(1, points.length - 1))},${22 + ((max - point.value) / range) * 360}`).join(' ');
+    const bounds = this.trendBounds;
+    return channel.history.slice(-this.trendPointLimit).map((point) => {
+      const position = this.trendPointPosition(point.time, point.value, bounds);
+      return `${position.x},${position.y}`;
+    }).join(' ');
+  }
+  get trendBounds(): { minValue: number; maxValue: number; minTime: number; maxTime: number } {
+    const points = this.selectedTrendChannels.flatMap(channel => channel.history.slice(-this.trendPointLimit));
+    const values = points.map(point => point.value).filter(Number.isFinite);
+    const times = points.map(point => Date.parse(point.time)).filter(Number.isFinite);
+    const valueMin = values.length ? Math.min(...values) : 0;
+    const valueMax = values.length ? Math.max(...values) : 1;
+    const padding = Math.max(0.5, (valueMax - valueMin) * 0.1);
+    const now = Date.now();
+    const minTime = times.length ? Math.min(...times) : now - 60000;
+    const rawMaxTime = times.length ? Math.max(...times) : now;
+    return { minValue: valueMin - padding, maxValue: valueMax + padding, minTime, maxTime: rawMaxTime > minTime ? rawMaxTime : minTime + 1000 };
+  }
+  get trendYTicks(): Array<{ y: number; value: number }> {
+    const bounds = this.trendBounds;
+    return Array.from({ length: 6 }, (_, index) => ({ y: 22 + index * 72, value: bounds.maxValue - index * ((bounds.maxValue - bounds.minValue) / 5) }));
+  }
+  get trendXTicks(): Array<{ x: number; label: string }> {
+    const bounds = this.trendBounds;
+    return Array.from({ length: 6 }, (_, index) => {
+      const time = bounds.minTime + index * ((bounds.maxTime - bounds.minTime) / 5);
+      return { x: 68 + index * (904 / 5), label: this.formatTime(new Date(time)) };
+    });
+  }
+  trendPointPosition(time: string, value: number, bounds = this.trendBounds): { x: number; y: number } {
+    const timestamp = Date.parse(time);
+    const x = 68 + ((Number.isFinite(timestamp) ? timestamp : bounds.maxTime) - bounds.minTime) / (bounds.maxTime - bounds.minTime) * 904;
+    const y = 22 + (bounds.maxValue - value) / (bounds.maxValue - bounds.minValue) * 360;
+    return { x: Math.max(68, Math.min(972, x)), y: Math.max(22, Math.min(382, y)) };
+  }
+  trendLatestPoint(channel: SensorChannel): { x: number; y: number; value: number } | null {
+    const point = channel.history.slice(-this.trendPointLimit).at(-1);
+    return point ? { ...this.trendPointPosition(point.time, point.value), value: point.value } : null;
   }
 
   private async prepareAlertAudio(): Promise<AudioContext> {

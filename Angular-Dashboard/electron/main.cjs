@@ -23,7 +23,9 @@ function registerIpc() {
   ipcMain.handle('settings:save', (_event, input) => db.saveSetting(input.token, input.key, input.value));
   ipcMain.handle('channels:save-limits', (_event, input) => db.saveChannelLimits(input.token, input.channelId, input.limits));
   ipcMain.handle('readings:ingest', (_event, input) => db.ingestSnapshotAuthorized(input.token, input.snapshot, input.source));
-  ipcMain.handle('api:sync', (_event, token) => db.syncApi(token));
+  ipcMain.handle('api:sync', (_event, input) => typeof input === 'string'
+    ? db.syncApi(input, true)
+    : db.syncApi(input.token, input.persist !== false));
   ipcMain.handle('readings:latest', (_event, token) => db.latestSnapshot(token));
   ipcMain.handle('reports:query', (_event, input) => db.queryReport(input.token, input.filter));
   ipcMain.handle('reports:export', (_event, input) => db.exportReport(input.token, input.filter, mainWindow, dialog));

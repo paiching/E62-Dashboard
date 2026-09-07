@@ -138,3 +138,14 @@ test('tests and switches are in settings; only 10/30/60 second options remain', 
   assert.match(settings, /testSound\(\)/); assert.match(settings, /testNotification\(\)/);
   assert.match(settings, /啟用警報聲音/); assert.match(settings, /啟用桌面通知/);
 });
+
+test('overview summary cards filter the sensor grid without navigating away', () => {
+  const template = readFileSync(path.join(__dirname, '../src/app/app.component.html'), 'utf8');
+  const summary = template.split('<section class="summary-grid">')[1].split('</section>')[0];
+  assert.match(summary, /selectOverviewFilter\('ok'\)/);
+  assert.match(summary, /selectOverviewFilter\('alarm'\)/);
+  assert.match(summary, /selectOverviewFilter\('error'\)/);
+  assert.doesNotMatch(summary, /navigate\(|showAlarms\(/);
+  assert.match(template, /<select \[\(ngModel\)\]="overviewFilter"[\s\S]*?refreshOverview\(\)/);
+  assert.match(componentText, /async refreshOverview\(\)[\s\S]*?selectOverviewFilter\('all'\);[\s\S]*?await this\.refreshData\(false\)/);
+});
