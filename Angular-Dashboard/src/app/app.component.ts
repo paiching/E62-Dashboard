@@ -49,6 +49,7 @@ export class AppComponent implements OnInit, OnDestroy {
   syncError = '';
   apiStatus = 'unknown';
   apiStale = false;
+  get snapshotReminderEnabled(): boolean { return this.appSettings['notifications.snapshot_stale_enabled'] === true; }
   apiAgeSeconds = 0;
   apiCollectedAt = '';
   reportMessage = '';
@@ -623,7 +624,7 @@ export class AppComponent implements OnInit, OnDestroy {
     catch (error) { this.testMessage = error instanceof Error ? error.message : '通知測試失敗'; }
   }
 
-  async setAlertEnabled(key: 'alarms.sound_enabled' | 'notifications.enabled', value: boolean): Promise<void> {
+  async setAlertEnabled(key: 'alarms.sound_enabled' | 'notifications.enabled' | 'notifications.snapshot_stale_enabled', value: boolean): Promise<void> {
     if (this.alertSettingsSaving) return;
     this.alertSettingsSaving = true;
     this.testMessage = '';
@@ -791,7 +792,7 @@ export class AppComponent implements OnInit, OnDestroy {
   async saveDatabaseSetting(key: string, value: unknown): Promise<boolean> {
     if (!this.session) return false;
     if (!this.db.available) {
-      if (!['alarms.sound_enabled', 'alarms.sound_interval_seconds', 'notifications.enabled', 'api.poll_interval_ms'].includes(key)) return false;
+      if (!['alarms.sound_enabled', 'alarms.sound_interval_seconds', 'notifications.enabled', 'notifications.snapshot_stale_enabled', 'api.poll_interval_ms'].includes(key)) return false;
       this.appSettings[key] = value;
       this.applyDatabaseSettings();
       this.settingsMessage = '設定已套用（瀏覽器預覽，僅本次有效）';

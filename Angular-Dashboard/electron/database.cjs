@@ -42,6 +42,7 @@ function seedDatabase() {
     ['api.poll_interval_ms',60000,'api','自動同步間隔'],['report.retention_days',365,'report','歷史資料保留天數'],
     ['dashboard.show_status',true,'display','顯示 Header 狀態列'],['ui.default_view','overview','display','登入後預設頁面'],
     ['notifications.enabled',true,'notification','允許桌面通知'],
+    ['notifications.snapshot_stale_enabled',false,'notification','顯示快照過期提醒'],
     ['alarms.sound_enabled',true,'notification','異常警報聲音'],
     ['alarms.sound_interval_seconds',3,'notification','持續警報聲播放間隔（秒）'],
     ['alarms.default_limits',{low:2,high:8},'alarm','未個別設定通道的預設溫度上下限'],
@@ -163,7 +164,7 @@ function saveSetting(token, key, value) {
     return settingsObject();
   }
   if (key === 'api.poll_interval_ms' && ![10000, 30000, 60000].includes(value)) throw new Error('刷新頻率僅支援 10、30、60 秒');
-  if (['notifications.enabled', 'alarms.sound_enabled'].includes(key) && typeof value !== 'boolean') throw new Error('開關設定必須為布林值');
+  if (['notifications.enabled', 'notifications.snapshot_stale_enabled', 'alarms.sound_enabled'].includes(key) && typeof value !== 'boolean') throw new Error('開關設定必須為布林值');
   if (key === 'alarms.sound_interval_seconds' && (!Number.isInteger(value) || value < 1 || value > 300)) throw new Error('警報聲間隔需為 1～300 的整數秒');
   if (!database.prepare('SELECT 1 AS ok FROM app_settings WHERE key=?').get(key)) throw new Error('未知設定');
   database.prepare('UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key=?').run(json(value), key);

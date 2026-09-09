@@ -39,7 +39,7 @@
 
     <main class="page-content">
       <div class="api-error" *ngIf="syncError">資料同步失敗：{{ syncError }}</div>
-      <div class="api-error" *ngIf="!syncError && appSettings['data.mode']==='live' && (apiStatus!=='connected' || apiStale)">設備 API：{{ apiStatusLabel(apiStatus) }}<ng-container *ngIf="apiStale">；快照已過期（{{ apiAgeSeconds | number:'1.1-1' }} 秒）</ng-container></div>
+      <div class="api-error" *ngIf="!syncError && appSettings['data.mode']==='live' && (apiStatus!=='connected' || (snapshotReminderEnabled && apiStale))">設備 API：{{ apiStatusLabel(apiStatus) }}<ng-container *ngIf="snapshotReminderEnabled && apiStale">；快照已過期（{{ apiAgeSeconds | number:'1.1-1' }} 秒）</ng-container></div>
       <ng-container *ngIf="view==='overview'">
         <section class="summary-grid">
           <button class="summary-card summary-card-button green" [class.active]="overviewFilter==='ok'" [attr.aria-pressed]="overviewFilter==='ok'" (click)="selectOverviewFilter('ok')"><span><mat-icon>monitor_heart</mat-icon></span><div><b>{{ normalCount }}</b><small>正常</small></div></button>
@@ -122,6 +122,13 @@
               <p>{{ notificationsEnabled ? '已啟用' : '已關閉' }} · 同一異常不會每次刷新重複通知。</p>
               <button class="test-button" (click)="testNotification()" [disabled]="!notificationsEnabled || alertSettingsSaving"><mat-icon>notifications_active</mat-icon>測試通知</button>
               <p>需保持程式執行；Windows 勿擾或關閉通知可能阻擋顯示。</p>
+            </div>
+          </article>
+          <article class="panel info-card alert-settings-card">
+            <span><mat-icon>notifications_active</mat-icon></span><div>
+              <div class="alert-setting-heading"><h3>快照提醒</h3><label class="switch"><input type="checkbox" aria-label="啟用快照提醒" [ngModel]="snapshotReminderEnabled" (ngModelChange)="setAlertEnabled('notifications.snapshot_stale_enabled', $event)" [disabled]="alertSettingsSaving"><span></span></label></div>
+              <p>{{ snapshotReminderEnabled ? '已啟用' : '已關閉' }} · 開啟後，設備資料快照過期時顯示提醒。</p>
+              <p>預設關閉，切換後自動儲存。</p>
             </div>
           </article>
           <div class="alert-settings-feedback" *ngIf="testMessage || alertMessage || soundMessage" role="status"><p *ngIf="testMessage">{{ testMessage }}</p><p *ngIf="alertMessage" class="form-error">{{ alertMessage }}</p><p *ngIf="soundMessage" class="form-error">{{ soundMessage }}</p></div>
