@@ -68,4 +68,6 @@ pnpm build
 pnpm package:windows
 ```
 
-Windows portable 執行檔會輸出至 `release/E62-Angular-Dashboard-Demo-1.0.0-Windows-x64.exe`。
+Windows portable 執行檔會輸出至 `release/E62-Dashboard-1.0.0-Windows-x64.exe`。應用顯示名稱為 E62 Dashboard；設定頁顯示資料庫檔名，實際資料目錄沿用既有位置以保留歷史資料及設定。
+
+Windows 打包使用已安裝的 `node_modules/electron/dist`，避開 Electron 解壓後重新命名資料夾時的 `EPERM` 問題。可使用 `npm run package:windows -- --config.directories.output=release-test` 指定輸出資料夾。

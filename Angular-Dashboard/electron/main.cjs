@@ -44,7 +44,7 @@ function createWindow() {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#f2f6fa',
-    title: 'E62 Angular Dashboard',
+    title: 'E62 Dashboard',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

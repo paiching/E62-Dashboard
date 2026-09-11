@@ -2,13 +2,15 @@
   "name": "angular-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "Angular edition of the E62/C62 sensor dashboard demo",
+  "description": "E62/C62 sensor monitoring dashboard",
   "main": "electron/main.cjs",
   "scripts": {
     "start": "ng serve --host 127.0.0.1",
     "build": "ng build --base-href ./",
     "desktop": "electron .",
-    "package:windows": "npm run build && electron-builder --win portable"
+    "package:windows": "npm run build && electron-builder --win portable --config.electronDist=node_modules/electron/dist",
+    "package:windows:dir": "npm run build && electron-builder --win --x64 --dir --config.electronDist=node_modules/electron/dist",
+    "package:windows:installer": "npm run build && electron-builder --win nsis --x64 --config.electronDist=node_modules/electron/dist"
   },
   "dependencies": {
     "@angular/animations": "^20.3.0",
@@ -35,7 +37,7 @@
   },
   "build": {
     "appId": "tw.com.e62.dashboard.angular.demo",
-    "productName": "E62 Angular Dashboard Demo",
+    "productName": "E62 Dashboard",
     "asar": true,
     "directories": {
       "output": "release"
@@ -45,6 +47,14 @@
       "electron/**/*",
       "package.json"
     ],
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "artifactName": "E62-Dashboard-Setup-${version}-Windows-${arch}.${ext}"
+    },
     "win": {
       "target": [
         {
@@ -54,7 +64,7 @@
           ]
         }
       ],
-      "artifactName": "E62-Angular-Dashboard-Demo-${version}-Windows-${arch}.${ext}"
+      "artifactName": "E62-Dashboard-${version}-Windows-${arch}.${ext}"
     }
   }
 }

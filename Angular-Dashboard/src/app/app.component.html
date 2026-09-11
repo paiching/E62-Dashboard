@@ -8,7 +8,7 @@
       <button type="submit" class="primary-button login-submit">登入系統</button>
     </form>
   </section>
-  <p class="login-mode">ANGULAR DEMO · 200 點模擬資料</p>
+  <p class="login-mode">E62 / C62 感應器監控</p>
 </main>
 
 <div class="app-shell" [class.sidebar-is-collapsed]="collapsed" *ngIf="session">
@@ -16,7 +16,7 @@
   <aside class="sidebar" [class.collapsed]="collapsed" [class.mobile-open]="mobileOpen">
     <div class="sidebar-brand-row">
       <button class="sidebar-logo" type="button" (click)="toggleSidebar()">E62</button>
-      <div class="sidebar-brand-copy"><strong>Edge Dashboard</strong><small>Angular 感應器監控</small></div>
+      <div class="sidebar-brand-copy"><strong>Edge Dashboard</strong><small>感應器監控</small></div>
       <button class="icon-button sidebar-close-mobile" (click)="mobileOpen=false" aria-label="關閉選單"><mat-icon>close</mat-icon></button>
     </div>
     <nav class="sidebar-nav">
@@ -138,7 +138,7 @@
               <h3>SQLite 資料庫</h3>
               <div class="database-status" [ngClass]="databaseState" role="status"><span class="database-status-dot" aria-hidden="true"></span>{{ databaseStatusLabel }}</div>
               <p>API 歷史、報表、設定、帳號及權限的單一資料來源。</p>
-              <small class="database-path">{{ databasePath }}</small>
+              <small class="database-path">{{ databaseFileName }}</small>
               <small class="database-check-time" *ngIf="databaseCheckedAt">最後檢查：{{ formatTime(databaseCheckedAt) }}（每 10 秒更新）</small>
               <p class="database-error" *ngIf="databaseError">{{ databaseError }}</p>
               <div class="database-actions">

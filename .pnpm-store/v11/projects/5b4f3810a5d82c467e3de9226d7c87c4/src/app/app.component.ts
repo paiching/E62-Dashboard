@@ -38,6 +38,7 @@ export class AppComponent implements OnInit, OnDestroy {
   session: UserSession | null = null;
   appSettings: Record<string, unknown> = {};
   databasePath = '瀏覽器開發模式（Electron 啟動後使用 SQLite）';
+  get databaseFileName(): string { return this.databasePath.split(/[\\/]/).pop() ?? this.databasePath; }
   databaseState: 'checking' | 'connected' | 'disconnected' | 'browser' = 'checking';
   databaseError = '';
   databaseCheckedAt = '';
