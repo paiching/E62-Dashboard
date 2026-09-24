@@ -49,8 +49,12 @@ test("CSV export preserves negative readings and protects formula-like text", as
     assert.ok(rows[index].includes(`,"'${names[index]}",`), rows[index]);
   }
   assert.ok(rows[4].includes(',"Sensor ""A"", freezer",'));
-  assert.ok(content.includes(`"申請人","yves","開始時間","${reportDate} 00:00:00"`));
-  assert.ok(content.includes(`"手機","0926101787","結束時間","${reportDate} 23:59:59"`));
+  assert.ok(
+    content.includes(`"申請人","yves","開始時間","${reportDate} 00:00:00"`),
+  );
+  assert.ok(
+    content.includes(`"手機","0926101787","結束時間","${reportDate} 23:59:59"`),
+  );
   assert.match(
     content,
     /"信箱","yves\.lin@sgs\.com","報表時間","\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"/,

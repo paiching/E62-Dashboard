@@ -43,12 +43,19 @@ function initializeDatabase(userDataPath, forceMockMode = false) {
     CREATE TABLE IF NOT EXISTS ingest_log(id INTEGER PRIMARY KEY AUTOINCREMENT,batch_id TEXT NOT NULL UNIQUE,source TEXT NOT NULL,source_url TEXT,channel_count INTEGER NOT NULL,received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL,error_message TEXT);
   `);
   const userColumns = new Set(
-    database.prepare("PRAGMA table_info(users)").all().map((column) => column.name),
+    database
+      .prepare("PRAGMA table_info(users)")
+      .all()
+      .map((column) => column.name),
   );
   if (!userColumns.has("phone"))
-    database.exec("ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''");
+    database.exec(
+      "ALTER TABLE users ADD COLUMN phone TEXT NOT NULL DEFAULT ''",
+    );
   if (!userColumns.has("email"))
-    database.exec("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''");
+    database.exec(
+      "ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''",
+    );
   seedDatabase();
   if (forceMockMode)
     database
@@ -199,12 +206,28 @@ function verifyPassword(password, stored) {
     Buffer.from(expected, "hex"),
   );
 }
-function createUser(username, displayName, password, roleCode, channelScope, phone = "", email = "") {
+function createUser(
+  username,
+  displayName,
+  password,
+  roleCode,
+  channelScope,
+  phone = "",
+  email = "",
+) {
   database
     .prepare(
       "INSERT INTO users(username,display_name,phone,email,password_hash,role_id,channel_scope) SELECT ?,?,?,?,?,id,? FROM roles WHERE code=?",
     )
-    .run(username, displayName, phone, email, hashPassword(password), channelScope, roleCode);
+    .run(
+      username,
+      displayName,
+      phone,
+      email,
+      hashPassword(password),
+      channelScope,
+      roleCode,
+    );
 }
 function settingsObject() {
   return Object.fromEntries(
@@ -824,7 +847,10 @@ function saveUser(token, input) {
     throw new Error("顯示名稱需為 1～80 個字");
   if (phone.length > 30 || (phone && !/^[0-9+()\s-]+$/.test(phone)))
     throw new Error("手機格式不正確");
-  if (email.length > 254 || (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)))
+  if (
+    email.length > 254 ||
+    (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+  )
     throw new Error("信箱格式不正確");
   if (scope.length > 200) throw new Error("通道範圍過長");
   const role = database
