@@ -37,6 +37,8 @@ export interface LocalAccount {
   id?: number;
   username: string;
   displayName: string;
+  phone?: string;
+  email?: string;
   password?: string;
   role: string;
   roleCode: string;

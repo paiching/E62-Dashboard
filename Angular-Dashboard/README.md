@@ -1,4 +1,4 @@
-# E62 Angular Dashboard
+# C62 Angular Dashboard
 
 此專案是獨立的 Angular + TypeScript + Electron 桌面版，介面與 React 版一致，但不依賴 React 專案。
 
@@ -7,7 +7,7 @@
 桌面程式使用 Electron 內建的 `node:sqlite`，不需要另外安裝 SQLite。資料庫預設位置：
 
 ```text
-%APPDATA%\angular-dashboard\data\e62-dashboard.sqlite3
+%APPDATA%\angular-dashboard\data\c62-dashboard.sqlite3
 ```
 
 - API 每次同步成功後，所有通道寫入 `sensor_readings`。
@@ -68,6 +68,6 @@ pnpm build
 pnpm package:windows
 ```
 
-Windows portable 執行檔會輸出至 `release/E62-Dashboard-1.0.0-Windows-x64.exe`。應用顯示名稱為 E62 Dashboard；設定頁顯示資料庫檔名，實際資料目錄沿用既有位置以保留歷史資料及設定。
+Windows portable 執行檔會輸出至 `release/C62-Dashboard-1.0.0-Windows-x64.exe`。應用顯示名稱為 C62 Dashboard；設定頁顯示資料庫檔名。
 
 Windows 打包使用已安裝的 `node_modules/electron/dist`，避開 Electron 解壓後重新命名資料夾時的 `EPERM` 問題。可使用 `npm run package:windows -- --config.directories.output=release-test` 指定輸出資料夾。

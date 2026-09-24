@@ -38,4 +38,4 @@ pnpm install
 pnpm package:windows
 ```
 
-單一檔案成品會輸出到 `release/E62-Dashboard-Demo-1.0.0-Windows-x64.exe`。
+單一檔案成品會輸出到 `release/C62-Dashboard-Demo-1.0.0-Windows-x64.exe`。

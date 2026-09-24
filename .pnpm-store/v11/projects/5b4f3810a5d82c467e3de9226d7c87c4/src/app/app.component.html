@@ -1,203 +1,1437 @@
 <main class="login-page" *ngIf="!session">
   <section class="login-card login-card-compact">
-    <div class="login-brand"><span>E62</span><div><h1>Edge Dashboard</h1><p>E62 / C62 溫度感應器監控系統</p></div></div>
+    <div class="login-brand">
+      <span>C62</span>
+      <div>
+        <h1>Edge Dashboard</h1>
+        <p>C62 溫度感應器監控系統</p>
+      </div>
+    </div>
     <form (ngSubmit)="login()" autocomplete="on">
-      <label>帳號<div class="input-with-icon"><mat-icon>person</mat-icon><input name="username" [(ngModel)]="username" autofocus autocomplete="username" placeholder="請輸入帳號"></div></label>
-      <label>密碼<div class="input-with-icon"><mat-icon>lock</mat-icon><input name="password" [(ngModel)]="password" type="password" autocomplete="current-password" placeholder="請輸入密碼"></div></label>
+      <label
+        >帳號
+        <div class="input-with-icon">
+          <mat-icon>person</mat-icon
+          ><input
+            name="username"
+            [(ngModel)]="username"
+            autofocus
+            autocomplete="username"
+            placeholder="請輸入帳號"
+          /></div
+      ></label>
+      <label
+        >密碼
+        <div class="input-with-icon">
+          <mat-icon>lock</mat-icon
+          ><input
+            name="password"
+            [(ngModel)]="password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="請輸入密碼"
+          /></div
+      ></label>
       <div class="form-error" *ngIf="loginError">{{ loginError }}</div>
-      <button type="submit" class="primary-button login-submit">登入系統</button>
+      <button type="submit" class="primary-button login-submit">
+        登入系統
+      </button>
     </form>
   </section>
-  <p class="login-mode">E62 / C62 感應器監控</p>
+  <p class="login-mode">C62 感應器監控</p>
 </main>
 
 <div class="app-shell" [class.sidebar-is-collapsed]="collapsed" *ngIf="session">
-  <button class="sidebar-backdrop" [class.visible]="mobileOpen" (click)="mobileOpen=false" aria-label="關閉選單"></button>
-  <aside class="sidebar" [class.collapsed]="collapsed" [class.mobile-open]="mobileOpen">
+  <button
+    class="sidebar-backdrop"
+    [class.visible]="mobileOpen"
+    (click)="mobileOpen = false"
+    aria-label="關閉選單"
+  ></button>
+  <aside
+    class="sidebar"
+    [class.collapsed]="collapsed"
+    [class.mobile-open]="mobileOpen"
+  >
     <div class="sidebar-brand-row">
-      <button class="sidebar-logo" type="button" (click)="toggleSidebar()">E62</button>
-      <div class="sidebar-brand-copy"><strong>Edge Dashboard</strong><small>感應器監控</small></div>
-      <button class="icon-button sidebar-close-mobile" (click)="mobileOpen=false" aria-label="關閉選單"><mat-icon>close</mat-icon></button>
+      <button class="sidebar-logo" type="button" (click)="toggleSidebar()">
+        C62
+      </button>
+      <div class="sidebar-brand-copy">
+        <strong>Edge Dashboard</strong><small>感應器監控</small>
+      </div>
+      <button
+        class="icon-button sidebar-close-mobile"
+        (click)="mobileOpen = false"
+        aria-label="關閉選單"
+      >
+        <mat-icon>close</mat-icon>
+      </button>
     </div>
     <nav class="sidebar-nav">
-      <button *ngFor="let item of navItems" [class.active]="view===item.key" (click)="navigate(item.key)" [title]="item.label"><mat-icon [svgIcon]="item.icon"></mat-icon><span>{{ item.label }}</span></button>
+      <button
+        *ngFor="let item of navItems"
+        [class.active]="view === item.key"
+        (click)="navigate(item.key)"
+        [title]="item.label"
+      >
+        <mat-icon [svgIcon]="item.icon"></mat-icon><span>{{ item.label }}</span>
+      </button>
     </nav>
-    <div class="sidebar-user"><span>{{ session.displayName.slice(0,1) }}</span><div><b>{{ session.displayName }}</b><small>{{ session.role }}</small></div><button class="sidebar-logout" (click)="logout()" title="登出" aria-label="登出"><mat-icon>logout</mat-icon></button></div>
+    <div class="sidebar-user">
+      <span>{{ session.displayName.slice(0, 1) }}</span>
+      <div>
+        <b>{{ session.displayName }}</b
+        ><small>{{ session.role }}</small>
+      </div>
+      <button
+        class="sidebar-logout"
+        (click)="logout()"
+        title="登出"
+        aria-label="登出"
+      >
+        <mat-icon>logout</mat-icon>
+      </button>
+    </div>
   </aside>
 
   <div class="app-content">
-    <header class="topbar" [class.topbar-overview]="view==='overview'">
-      <button class="icon-button mobile-menu" (click)="mobileOpen=true" aria-label="開啟選單"><mat-icon>menu</mat-icon></button>
-      <div class="topbar-title"><strong>{{ viewTitles[view] }}</strong></div>
-      <div class="topbar-status-slot" *ngIf="view==='overview' && showDashboardStatus">
-        <button *ngIf="alarmCount" class="topbar-system-status alarm" (click)="selectOverviewFilter('alarm')"><mat-icon>notifications_active</mat-icon><b>警報：</b><span>{{ alarmCount }} 點溫度異常</span><em *ngIf="errorCount">另 {{ errorCount }} 點 Sensor 異常</em></button>
-        <button *ngIf="!alarmCount && errorCount" class="topbar-system-status error" (click)="selectOverviewFilter('error')"><mat-icon>cell_tower</mat-icon><b>異常：</b><span>{{ errorCount }} 點讀取失敗</span></button>
-        <button *ngIf="!alarmCount && !errorCount" class="topbar-system-status ok" (click)="selectOverviewFilter('ok')"><mat-icon>monitor_heart</mat-icon><b>系統正常</b></button>
+    <header class="topbar" [class.topbar-overview]="view === 'overview'">
+      <button
+        class="icon-button mobile-menu"
+        (click)="mobileOpen = true"
+        aria-label="開啟選單"
+      >
+        <mat-icon>menu</mat-icon>
+      </button>
+      <div class="topbar-title">
+        <strong>{{ viewTitles[view] }}</strong>
       </div>
-      <div class="topbar-live-clock" *ngIf="view==='overview'"><span class="live-pill">LIVE</span><mat-icon>schedule</mat-icon><time>{{ formatDateTime(clock) }}</time></div>
+      <div
+        class="topbar-status-slot"
+        *ngIf="view === 'overview' && showDashboardStatus"
+      >
+        <button
+          *ngIf="alarmCount"
+          class="topbar-system-status alarm"
+          (click)="selectOverviewFilter('alarm')"
+        >
+          <mat-icon>notifications_active</mat-icon><b>警報：</b
+          ><span>{{ alarmCount }} 點溫度異常</span
+          ><em *ngIf="errorCount">另 {{ errorCount }} 點 Sensor 異常</em>
+        </button>
+        <button
+          *ngIf="!alarmCount && errorCount"
+          class="topbar-system-status error"
+          (click)="selectOverviewFilter('error')"
+        >
+          <mat-icon>cell_tower</mat-icon><b>異常：</b
+          ><span>{{ errorCount }} 點讀取失敗</span>
+        </button>
+        <button
+          *ngIf="!alarmCount && !errorCount"
+          class="topbar-system-status ok"
+          (click)="selectOverviewFilter('ok')"
+        >
+          <mat-icon>monitor_heart</mat-icon><b>系統正常</b>
+        </button>
+      </div>
+      <div class="topbar-live-clock" *ngIf="view === 'overview'">
+        <span class="live-pill">LIVE</span><mat-icon>schedule</mat-icon
+        ><time>{{ formatDateTime(clock) }}</time>
+      </div>
     </header>
 
     <main class="page-content">
-      <div class="api-error" *ngIf="syncError">資料同步失敗：{{ syncError }}</div>
-      <div class="api-error" *ngIf="!syncError && appSettings['data.mode']==='live' && (apiStatus!=='connected' || (snapshotReminderEnabled && apiStale))">設備 API：{{ apiStatusLabel(apiStatus) }}<ng-container *ngIf="snapshotReminderEnabled && apiStale">；快照已過期（{{ apiAgeSeconds | number:'1.1-1' }} 秒）</ng-container></div>
-      <ng-container *ngIf="view==='overview'">
+      <div class="api-error" *ngIf="syncError">
+        資料同步失敗：{{ syncError }}
+      </div>
+      <div
+        class="api-error"
+        *ngIf="
+          !syncError &&
+          appSettings['data.mode'] === 'live' &&
+          (apiStatus !== 'connected' || (snapshotReminderEnabled && apiStale))
+        "
+      >
+        設備 API：{{ apiStatusLabel(apiStatus)
+        }}<ng-container *ngIf="snapshotReminderEnabled && apiStale"
+          >；快照已過期（{{
+            apiAgeSeconds | number: "1.1-1"
+          }}
+          秒）</ng-container
+        >
+      </div>
+      <ng-container *ngIf="view === 'overview'">
         <section class="summary-grid">
-          <button class="summary-card summary-card-button green" [class.active]="overviewFilter==='ok'" [attr.aria-pressed]="overviewFilter==='ok'" (click)="selectOverviewFilter('ok')"><span><mat-icon>monitor_heart</mat-icon></span><div><b>{{ normalCount }}</b><small>正常</small></div></button>
-          <button class="summary-card summary-card-button red" [class.active]="overviewFilter==='alarm'" [attr.aria-pressed]="overviewFilter==='alarm'" (click)="selectOverviewFilter('alarm')"><span><mat-icon>error</mat-icon></span><div><b>{{ alarmCount }}</b><small>警報</small></div></button>
-          <button class="summary-card summary-card-button gray" [class.active]="overviewFilter==='error'" [attr.aria-pressed]="overviewFilter==='error'" (click)="selectOverviewFilter('error')"><span><mat-icon>cell_tower</mat-icon></span><div><b>{{ errorCount }}</b><small>Sensor 異常</small></div></button>
-          <button class="summary-card summary-card-button blue" (click)="pendingRefreshSeconds=pollIntervalMs/1000; refreshDialogOpen=true"><span><mat-icon>refresh</mat-icon></span><div><b>{{ pollIntervalMs/1000 }} 秒</b><small>刷新頻率</small></div></button>
+          <button
+            class="summary-card summary-card-button green"
+            [class.active]="overviewFilter === 'ok'"
+            [attr.aria-pressed]="overviewFilter === 'ok'"
+            (click)="selectOverviewFilter('ok')"
+          >
+            <span><mat-icon>monitor_heart</mat-icon></span>
+            <div>
+              <b>{{ normalCount }}</b
+              ><small>正常</small>
+            </div>
+          </button>
+          <button
+            class="summary-card summary-card-button red"
+            [class.active]="overviewFilter === 'alarm'"
+            [attr.aria-pressed]="overviewFilter === 'alarm'"
+            (click)="selectOverviewFilter('alarm')"
+          >
+            <span><mat-icon>error</mat-icon></span>
+            <div>
+              <b>{{ alarmCount }}</b
+              ><small>警報</small>
+            </div>
+          </button>
+          <button
+            class="summary-card summary-card-button gray"
+            [class.active]="overviewFilter === 'error'"
+            [attr.aria-pressed]="overviewFilter === 'error'"
+            (click)="selectOverviewFilter('error')"
+          >
+            <span><mat-icon>cell_tower</mat-icon></span>
+            <div>
+              <b>{{ errorCount }}</b
+              ><small>Sensor 異常</small>
+            </div>
+          </button>
+          <button
+            class="summary-card summary-card-button blue"
+            (click)="
+              pendingRefreshSeconds = pollIntervalMs / 1000;
+              refreshDialogOpen = true
+            "
+          >
+            <span><mat-icon>refresh</mat-icon></span>
+            <div>
+              <b>{{ pollIntervalMs / 1000 }} 秒</b><small>刷新頻率</small>
+            </div>
+          </button>
         </section>
         <section class="sensor-toolbar">
-          <div class="range-tabs"><button *ngFor="let page of overviewPages" [class.active]="overviewPage===page" (click)="overviewPage=page">{{ page*50+1 }}–{{ Math.min((page+1)*50, filteredOverview.length) }}</button></div>
-          <div class="sensor-filters"><input type="search" [(ngModel)]="overviewQuery" (ngModelChange)="overviewPage=0" placeholder="搜尋編號或名稱"><select [(ngModel)]="overviewFilter" (ngModelChange)="overviewPage=0"><option value="all">全部狀態</option><option value="ok">正常</option><option value="alarm">警報</option><option value="error">異常</option></select><button type="button" class="filter-reset overview-refresh-button" (click)="refreshOverview()" [disabled]="dataRefreshing"><mat-icon [class.spin]="dataRefreshing">refresh</mat-icon>{{ dataRefreshing ? '刷新中…' : '刷新' }}</button></div>
+          <div class="range-tabs">
+            <button
+              *ngFor="let page of overviewPages"
+              [class.active]="overviewPage === page"
+              (click)="overviewPage = page"
+            >
+              {{ page * 50 + 1 }}–{{
+                Math.min((page + 1) * 50, filteredOverview.length)
+              }}
+            </button>
+          </div>
+          <div class="sensor-filters">
+            <input
+              type="search"
+              [(ngModel)]="overviewQuery"
+              (ngModelChange)="overviewPage = 0"
+              placeholder="搜尋編號或名稱"
+            /><select
+              [(ngModel)]="overviewFilter"
+              (ngModelChange)="overviewPage = 0"
+            >
+              <option value="all">全部狀態</option>
+              <option value="ok">正常</option>
+              <option value="alarm">警報</option>
+              <option value="error">異常</option></select
+            ><button
+              type="button"
+              class="filter-reset overview-refresh-button"
+              (click)="refreshOverview()"
+              [disabled]="dataRefreshing"
+            >
+              <mat-icon [class.spin]="dataRefreshing">refresh</mat-icon
+              >{{ dataRefreshing ? "刷新中…" : "刷新" }}
+            </button>
+          </div>
         </section>
-        <section #sensorStage class="sensor-display-stage" [class.mode-compact]="displayMode==='compact'" [class.mode-detailed]="displayMode!=='compact'">
-          <div class="grid-caption"><div><b>感應器 {{ overviewPage*50+1 }}–{{ Math.min((overviewPage+1)*50, filteredOverview.length) }}</b><span>顯示 {{ visibleSensors.length }} / {{ filteredOverview.length }} 點</span></div><div class="display-mode-picker"><span>展示模式</span><button [class.active]="displayMode==='compact'" (click)="setDisplayMode('compact', sensorStage)"><mat-icon>grid_view</mat-icon><em>精簡</em></button><button [class.active]="displayMode==='detailed'" (click)="setDisplayMode('detailed', sensorStage)"><mat-icon>view_quilt</mat-icon><em>詳細</em></button><button [class.active]="displayMode==='fullscreen'" (click)="setDisplayMode('fullscreen', sensorStage)"><mat-icon>fullscreen</mat-icon><em>全螢幕</em></button></div></div>
+        <section
+          #sensorStage
+          class="sensor-display-stage"
+          [class.mode-compact]="displayMode === 'compact'"
+          [class.mode-detailed]="displayMode !== 'compact'"
+        >
+          <div class="grid-caption">
+            <div>
+              <b
+                >感應器 {{ overviewPage * 50 + 1 }}–{{
+                  Math.min((overviewPage + 1) * 50, filteredOverview.length)
+                }}</b
+              ><span
+                >顯示 {{ visibleSensors.length }} /
+                {{ filteredOverview.length }} 點</span
+              >
+            </div>
+            <div class="display-mode-picker">
+              <span>展示模式</span
+              ><button
+                [class.active]="displayMode === 'compact'"
+                (click)="setDisplayMode('compact', sensorStage)"
+              >
+                <mat-icon>grid_view</mat-icon><em>精簡</em></button
+              ><button
+                [class.active]="displayMode === 'detailed'"
+                (click)="setDisplayMode('detailed', sensorStage)"
+              >
+                <mat-icon>view_quilt</mat-icon><em>詳細</em></button
+              ><button
+                [class.active]="displayMode === 'fullscreen'"
+                (click)="setDisplayMode('fullscreen', sensorStage)"
+              >
+                <mat-icon>fullscreen</mat-icon><em>全螢幕</em>
+              </button>
+            </div>
+          </div>
           <div class="sensor-grid">
-            <article *ngFor="let channel of visibleSensors" class="sensor-card" [ngClass]="state(channel)">
-              <div class="sensor-card-heading"><div><span>CH{{ channel.id }}</span><button class="sensor-name-button" (click)="openSensor(channel)">{{ channel.name }}</button></div><aside class="sensor-status-block"><span class="status-badge" [ngClass]="state(channel)">{{ statusLabel(state(channel)) }}</span><small *ngIf="state(channel)!=='ok'">{{ reason(channel) }}</small></aside></div>
-              <div class="sensor-value"><strong>{{ formatValue(channel.pv) }}</strong><span>°C</span></div>
-              <div class="sensor-range"><span>{{ channel.limit_source==='custom' ? '個別設定' : '預設值' }}</span><b>{{ formatValue(channel.web_lo) }} ～ {{ formatValue(channel.web_hi) }} °C</b></div>
-              <div class="sensor-card-footer"><span>SV {{ formatValue(channel.sv) }} °C</span><time>{{ formatTime(channel.time) }}</time></div>
-              <div class="sensor-card-details" *ngIf="displayMode!=='compact'"><div><span>歷史最低</span><b>{{ formatValue(channel.min) }} °C</b></div><div><span>歷史平均</span><b>{{ formatValue(channel.avg) }} °C</b></div><div><span>歷史最高</span><b>{{ formatValue(channel.max) }} °C</b></div><div><span>筆數</span><b>{{ channel.count }}</b></div></div>
+            <article
+              *ngFor="let channel of visibleSensors"
+              class="sensor-card"
+              [ngClass]="state(channel)"
+            >
+              <div class="sensor-card-heading">
+                <div>
+                  <span>CH{{ channel.id }}</span
+                  ><button
+                    class="sensor-name-button"
+                    (click)="openSensor(channel)"
+                  >
+                    {{ channel.name }}
+                  </button>
+                </div>
+                <aside class="sensor-status-block">
+                  <span class="status-badge" [ngClass]="state(channel)">{{
+                    statusLabel(state(channel))
+                  }}</span
+                  ><small *ngIf="state(channel) !== 'ok'">{{
+                    reason(channel)
+                  }}</small>
+                </aside>
+              </div>
+              <div class="sensor-value">
+                <strong>{{ formatValue(channel.pv) }}</strong
+                ><span>°C</span>
+              </div>
+              <div class="sensor-range">
+                <span>{{
+                  channel.limit_source === "custom" ? "個別設定" : "預設值"
+                }}</span
+                ><b
+                  >{{ formatValue(channel.web_lo) }} ～
+                  {{ formatValue(channel.web_hi) }} °C</b
+                >
+              </div>
+              <div class="sensor-card-footer">
+                <span>SV {{ formatValue(channel.sv) }} °C</span
+                ><time>{{ formatRelativeTime(channel.time) }}</time>
+              </div>
+              <div
+                class="sensor-card-details"
+                *ngIf="displayMode !== 'compact'"
+              >
+                <div>
+                  <span>歷史最低</span><b>{{ formatValue(channel.min) }} °C</b>
+                </div>
+                <div>
+                  <span>歷史平均</span><b>{{ formatValue(channel.avg) }} °C</b>
+                </div>
+                <div>
+                  <span>歷史最高</span><b>{{ formatValue(channel.max) }} °C</b>
+                </div>
+                <div>
+                  <span>筆數</span><b>{{ channel.count }}</b>
+                </div>
+              </div>
             </article>
-            <div class="empty-state" *ngIf="!visibleSensors.length">沒有符合篩選條件的感應器</div>
+            <div class="empty-state" *ngIf="!visibleSensors.length">
+              沒有符合篩選條件的感應器
+            </div>
           </div>
         </section>
       </ng-container>
 
-      <ng-container *ngIf="view==='trends'">
-        <section class="trend-toolbar panel"><label>保留點數<select [(ngModel)]="trendPointLimit"><option *ngFor="let option of pointOptions" [value]="option">{{ option }} 點</option></select></label><button class="secondary-button" (click)="trendPaused=!trendPaused"><mat-icon [svgIcon]="trendPaused ? 'play_arrow' : 'pause'"></mat-icon>{{ trendPaused ? '繼續即時更新' : '暫停更新' }}</button><span>更新時間：{{ formatTime(lastUpdated) }}</span></section>
+      <ng-container *ngIf="view === 'trends'">
+        <section class="trend-toolbar panel">
+          <label
+            >保留點數<select [(ngModel)]="trendPointLimit">
+              <option *ngFor="let option of pointOptions" [value]="option">
+                {{ option }} 點
+              </option>
+            </select></label
+          ><button
+            class="secondary-button"
+            (click)="trendPaused = !trendPaused"
+          >
+            <mat-icon
+              [svgIcon]="trendPaused ? 'play_arrow' : 'pause'"
+            ></mat-icon
+            >{{ trendPaused ? "繼續即時更新" : "暫停更新" }}</button
+          ><span>更新時間：{{ formatTime(lastUpdated) }}</span>
+        </section>
         <section class="trend-workspace">
-          <aside class="panel trend-channel-panel"><h3>選擇通道 <span>{{ selectedTrendIds.length }}/8</span></h3><div class="trend-channel-search"><mat-icon>search</mat-icon><input type="search" [(ngModel)]="trendQuery" placeholder="搜尋編號或名稱"></div><select [(ngModel)]="trendStatus"><option value="all">全部狀態</option><option value="ok">正常</option><option value="alarm">警報</option><option value="error">異常</option></select><div class="trend-channel-list"><label *ngFor="let channel of trendChannels"><input type="checkbox" [checked]="selectedTrendIds.includes(channel.id)" (change)="toggleTrend(channel.id)"><span><b>CH{{ channel.id }}</b><small>{{ channel.name }}</small></span><em>{{ formatValue(channel.pv) }} °C</em></label></div></aside>
-          <div class="panel trend-chart-panel"><div class="trend-chart-heading"><div><mat-icon>trending_up</mat-icon><div><h3>PV 即時溫度</h3><p>{{ selectedTrendChannels.length }} 個通道比較</p></div></div></div><div class="trend-legend"><button *ngFor="let channel of selectedTrendChannels; let index=index" (click)="toggleTrend(channel.id)"><i [style.background]="seriesColors[index]"></i><span>CH{{ channel.id }} {{ channel.name }}</span><mat-icon>close</mat-icon></button></div><div class="trend-chart-scroll"><svg class="trend-chart" viewBox="0 0 1000 430"><rect class="trend-plot-background" x="68" y="22" width="904" height="360"></rect><g *ngFor="let tick of trendYTicks"><line x1="68" x2="972" [attr.y1]="tick.y" [attr.y2]="tick.y"></line><text class="trend-tick-label" x="59" [attr.y]="tick.y+4" text-anchor="end">{{ tick.value | number:'1.1-1' }}</text></g><g *ngFor="let tick of trendXTicks"><line [attr.x1]="tick.x" [attr.x2]="tick.x" y1="22" y2="382"></line><text class="trend-tick-label" [attr.x]="tick.x" y="401" text-anchor="middle">{{ tick.label }}</text></g><g *ngFor="let channel of selectedTrendChannels; let index=index" class="trend-series"><polyline [attr.points]="trendPolyline(channel)" [style.stroke]="seriesColors[index]"></polyline><ng-container *ngIf="trendLatestPoint(channel) as latest"><circle [attr.cx]="latest.x" [attr.cy]="latest.y" r="4" [style.fill]="seriesColors[index]"></circle><text class="trend-latest-value" [attr.x]="latest.x-7" [attr.y]="latest.y-8" text-anchor="end" [style.fill]="seriesColors[index]">{{ latest.value | number:'1.1-1' }} °C</text></ng-container></g><text class="trend-axis-title" x="520" y="425" text-anchor="middle">時間</text><text class="trend-axis-title" transform="translate(17 202) rotate(-90)" text-anchor="middle">溫度 (°C)</text></svg></div></div>
+          <aside class="panel trend-channel-panel">
+            <h3>
+              選擇通道 <span>{{ selectedTrendIds.length }}/8</span>
+            </h3>
+            <div class="trend-channel-search">
+              <mat-icon>search</mat-icon
+              ><input
+                type="search"
+                [(ngModel)]="trendQuery"
+                placeholder="搜尋編號或名稱"
+              />
+            </div>
+            <select [(ngModel)]="trendStatus">
+              <option value="all">全部狀態</option>
+              <option value="ok">正常</option>
+              <option value="alarm">警報</option>
+              <option value="error">異常</option>
+            </select>
+            <div class="trend-channel-list">
+              <label *ngFor="let channel of trendChannels"
+                ><input
+                  type="checkbox"
+                  [checked]="selectedTrendIds.includes(channel.id)"
+                  (change)="toggleTrend(channel.id)"
+                /><span
+                  ><b>CH{{ channel.id }}</b
+                  ><small>{{ channel.name }}</small></span
+                ><em>{{ formatValue(channel.pv) }} °C</em></label
+              >
+            </div>
+          </aside>
+          <div class="panel trend-chart-panel">
+            <div class="trend-chart-heading">
+              <div>
+                <mat-icon>trending_up</mat-icon>
+                <div>
+                  <h3>PV 即時溫度</h3>
+                  <p>{{ selectedTrendChannels.length }} 個通道比較</p>
+                </div>
+              </div>
+            </div>
+            <div class="trend-legend">
+              <button
+                *ngFor="let channel of selectedTrendChannels; let index = index"
+                (click)="toggleTrend(channel.id)"
+              >
+                <i [style.background]="seriesColors[index]"></i
+                ><span>CH{{ channel.id }} {{ channel.name }}</span
+                ><mat-icon>close</mat-icon>
+              </button>
+            </div>
+            <div class="trend-chart-scroll">
+              <svg class="trend-chart" viewBox="0 0 1000 430">
+                <rect
+                  class="trend-plot-background"
+                  x="68"
+                  y="22"
+                  width="904"
+                  height="360"
+                ></rect>
+                <g *ngFor="let tick of trendYTicks">
+                  <line
+                    x1="68"
+                    x2="972"
+                    [attr.y1]="tick.y"
+                    [attr.y2]="tick.y"
+                  ></line>
+                  <text
+                    class="trend-tick-label"
+                    x="59"
+                    [attr.y]="tick.y + 4"
+                    text-anchor="end"
+                  >
+                    {{ tick.value | number: "1.1-1" }}
+                  </text>
+                </g>
+                <g *ngFor="let tick of trendXTicks">
+                  <line
+                    [attr.x1]="tick.x"
+                    [attr.x2]="tick.x"
+                    y1="22"
+                    y2="382"
+                  ></line>
+                  <text
+                    class="trend-tick-label"
+                    [attr.x]="tick.x"
+                    y="401"
+                    text-anchor="middle"
+                  >
+                    {{ tick.label }}
+                  </text>
+                </g>
+                <g
+                  *ngFor="
+                    let channel of selectedTrendChannels;
+                    let index = index
+                  "
+                  class="trend-series"
+                >
+                  <polyline
+                    [attr.points]="trendPolyline(channel)"
+                    [style.stroke]="seriesColors[index]"
+                  ></polyline>
+                  <ng-container *ngIf="trendLatestPoint(channel) as latest">
+                    <circle
+                      [attr.cx]="latest.x"
+                      [attr.cy]="latest.y"
+                      r="4"
+                      [style.fill]="seriesColors[index]"
+                    ></circle>
+                    <text
+                      class="trend-latest-value"
+                      [attr.x]="latest.x - 7"
+                      [attr.y]="latest.y - 8"
+                      text-anchor="end"
+                      [style.fill]="seriesColors[index]"
+                    >
+                      {{ latest.value | number: "1.1-1" }} °C
+                    </text>
+                  </ng-container>
+                </g>
+                <text
+                  class="trend-axis-title"
+                  x="520"
+                  y="425"
+                  text-anchor="middle"
+                >
+                  時間
+                </text>
+                <text
+                  class="trend-axis-title"
+                  transform="translate(17 202) rotate(-90)"
+                  text-anchor="middle"
+                >
+                  溫度 (°C)
+                </text>
+              </svg>
+            </div>
+          </div>
         </section>
       </ng-container>
 
-      <ng-container *ngIf="view==='channels'">
-        <div class="permission-save-message" *ngIf="reportMessage">{{ reportMessage }}</div>
-<section class="panel table-panel"><div class="channel-toolbar"><div class="channel-toolbar-summary"><b>{{ reportTotal || filteredChannelRows.length }} 筆歷史資料</b><span>歷史報表</span></div><div class="channel-filters"><input type="search" [(ngModel)]="channelQuery" (keyup.enter)="channelPage=1; runReportQuery()" placeholder="搜尋通道或名稱"><select [(ngModel)]="channelStatus" (ngModelChange)="channelPage=1; runReportQuery()"><option value="all">全部狀態</option><option value="ok">正常</option><option value="alarm">警報</option><option value="error">異常</option></select><label>起始日期<input type="date" [(ngModel)]="channelDateFrom" (change)="channelPage=1; runReportQuery()"></label><label>結束日期<input type="date" [(ngModel)]="channelDateTo" (change)="channelPage=1; runReportQuery()"></label><button class="filter-reset" (click)="refreshReport()"><mat-icon>refresh</mat-icon>刷新</button><button class="excel-export" (click)="exportCsv()"><mat-icon>download</mat-icon>匯出 CSV</button></div></div>
-          <div class="table-scroll"><table><thead><tr><th>通道</th><th>名稱</th><th>狀態</th><th>異常原因</th><th>PV</th><th>SV</th><th>MIN</th><th>MAX</th><th>更新時間</th></tr></thead><tbody><tr *ngFor="let channel of channelRows"><td><button class="table-sensor-link" (click)="openSensor(channel)">CH{{ channel.id }}</button></td><td><button class="table-sensor-link" (click)="openSensor(channel)">{{ channel.name }}</button></td><td><span class="status-badge" [ngClass]="state(channel)">{{ statusLabel(state(channel)) }}</span></td><td class="report-reason">{{ reason(channel) || '—' }}</td><td>{{ formatValue(channel.pv) }} °C</td><td>{{ formatValue(channel.sv) }} °C</td><td>{{ formatValue(channel.min) }}</td><td>{{ formatValue(channel.max) }}</td><td>{{ formatDateTime(channel.time) }}</td></tr></tbody></table></div>
-          <footer class="table-pagination"><label>每頁<select [(ngModel)]="channelPageSize" (ngModelChange)="channelPage=1; runReportQuery()"><option *ngFor="let size of pageSizes" [value]="size">{{ size }} 筆</option></select></label><span>{{ channelRows.length }} / {{ reportTotal || filteredChannelRows.length }}</span><div><button (click)="changeReportPage(channelPage-1)" [disabled]="channelPage<=1" aria-label="上一頁"><mat-icon>chevron_left</mat-icon></button><b>第 {{ channelPage }} / {{ channelPageCount }} 頁</b><button (click)="changeReportPage(channelPage+1)" [disabled]="channelPage>=channelPageCount" aria-label="下一頁"><mat-icon>chevron_right</mat-icon></button></div></footer>
+      <ng-container *ngIf="view === 'channels'">
+        <div class="permission-save-message" *ngIf="reportMessage">
+          {{ reportMessage }}
+        </div>
+        <section class="panel table-panel">
+          <div class="channel-toolbar">
+            <div class="channel-toolbar-summary">
+              <b>{{ reportTotal || filteredChannelRows.length }} 筆歷史資料</b
+              ><span>歷史報表</span>
+            </div>
+            <div class="channel-filters">
+              <input
+                type="search"
+                [(ngModel)]="channelQuery"
+                (keyup.enter)="channelPage = 1; runReportQuery()"
+                placeholder="搜尋通道或名稱"
+              /><select
+                [(ngModel)]="channelStatus"
+                (ngModelChange)="channelPage = 1; runReportQuery()"
+              >
+                <option value="all">全部狀態</option>
+                <option value="ok">正常</option>
+                <option value="alarm">警報</option>
+                <option value="error">異常</option></select
+              ><label
+                >起始日期<input
+                  type="date"
+                  [(ngModel)]="channelDateFrom"
+                  (change)="channelPage = 1; runReportQuery()" /></label
+              ><label
+                >結束日期<input
+                  type="date"
+                  [(ngModel)]="channelDateTo"
+                  (change)="channelPage = 1; runReportQuery()" /></label
+              ><button class="filter-reset" (click)="refreshReport()">
+                <mat-icon>refresh</mat-icon>刷新</button
+              ><button class="excel-export" (click)="exportCsv()">
+                <mat-icon>download</mat-icon>匯出 CSV
+              </button>
+            </div>
+          </div>
+          <div class="report-export-details" aria-label="匯出資訊">
+            <label
+              >申請人<input
+                [(ngModel)]="reportApplicant"
+                placeholder="登入帳號"
+            /></label>
+            <label
+              >手機<input [(ngModel)]="reportPhone" placeholder="選填"
+            /></label>
+            <label
+              >信箱<input
+                [(ngModel)]="reportEmail"
+                type="email"
+                placeholder="選填"
+            /></label>
+            <label
+              >場域<input [(ngModel)]="reportSite" placeholder="選填"
+            /></label>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>通道</th>
+                  <th>名稱</th>
+                  <th>狀態</th>
+                  <th>異常原因</th>
+                  <th>PV</th>
+                  <th>SV</th>
+                  <th>MIN</th>
+                  <th>MAX</th>
+                  <th>更新時間</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let channel of channelRows">
+                  <td>
+                    <button
+                      class="table-sensor-link"
+                      (click)="openSensor(channel)"
+                    >
+                      CH{{ channel.id }}
+                    </button>
+                  </td>
+                  <td>
+                    <button
+                      class="table-sensor-link"
+                      (click)="openSensor(channel)"
+                    >
+                      {{ channel.name }}
+                    </button>
+                  </td>
+                  <td>
+                    <span class="status-badge" [ngClass]="state(channel)">{{
+                      statusLabel(state(channel))
+                    }}</span>
+                  </td>
+                  <td class="report-reason">{{ reason(channel) || "—" }}</td>
+                  <td>{{ formatValue(channel.pv) }} °C</td>
+                  <td>{{ formatValue(channel.sv) }} °C</td>
+                  <td>{{ formatValue(channel.min) }}</td>
+                  <td>{{ formatValue(channel.max) }}</td>
+                  <td>{{ formatDateTime(channel.time) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <footer class="table-pagination">
+            <label
+              >每頁<select
+                [(ngModel)]="channelPageSize"
+                (ngModelChange)="channelPage = 1; runReportQuery()"
+              >
+                <option *ngFor="let size of pageSizes" [value]="size">
+                  {{ size }} 筆
+                </option>
+              </select></label
+            ><span
+              >{{ channelRows.length }} /
+              {{ reportTotal || filteredChannelRows.length }}</span
+            >
+            <div>
+              <button
+                (click)="changeReportPage(channelPage - 1)"
+                [disabled]="channelPage <= 1"
+                aria-label="上一頁"
+              >
+                <mat-icon>chevron_left</mat-icon></button
+              ><b>第 {{ channelPage }} / {{ channelPageCount }} 頁</b
+              ><button
+                (click)="changeReportPage(channelPage + 1)"
+                [disabled]="channelPage >= channelPageCount"
+                aria-label="下一頁"
+              >
+                <mat-icon>chevron_right</mat-icon>
+              </button>
+            </div>
+          </footer>
         </section>
       </ng-container>
 
-      <ng-container *ngIf="view==='alarms'">
-        <div class="alarm-filter-tabs"><button [class.active]="alarmFilter==='all'" (click)="alarmFilter='all'">全部 <b>{{ allAbnormalCount }}</b></button><button [class.active]="alarmFilter==='alarm'" (click)="alarmFilter='alarm'">警報 <b>{{ alarmCount }}</b></button><button [class.active]="alarmFilter==='error'" (click)="alarmFilter='error'">異常 <b>{{ errorCount }}</b></button></div>
-        <section class="alarm-list"><article *ngFor="let channel of alarms"><span class="alarm-icon" [ngClass]="state(channel)"><mat-icon>warning</mat-icon></span><div><b>CH{{ channel.id }} · {{ channel.name }}</b><p>{{ reason(channel) }}</p></div><span class="status-badge" [ngClass]="state(channel)">{{ statusLabel(state(channel)) }}</span><time>{{ formatTime(channel.time) }}</time></article></section>
-        <div class="panel empty-message" *ngIf="!alarms.length"><mat-icon>check_circle</mat-icon><h3>目前沒有異常</h3><p>沒有符合目前篩選條件的感應器。</p></div>
+      <ng-container *ngIf="view === 'alarms'">
+        <div class="alarm-filter-tabs">
+          <button
+            [class.active]="alarmFilter === 'all'"
+            (click)="alarmFilter = 'all'"
+          >
+            全部 <b>{{ allAbnormalCount }}</b></button
+          ><button
+            [class.active]="alarmFilter === 'alarm'"
+            (click)="alarmFilter = 'alarm'"
+          >
+            警報 <b>{{ alarmCount }}</b></button
+          ><button
+            [class.active]="alarmFilter === 'error'"
+            (click)="alarmFilter = 'error'"
+          >
+            異常 <b>{{ errorCount }}</b>
+          </button>
+        </div>
+        <section class="alarm-list">
+          <article *ngFor="let channel of alarms">
+            <span class="alarm-icon" [ngClass]="state(channel)"
+              ><mat-icon>warning</mat-icon></span
+            >
+            <div>
+              <b>CH{{ channel.id }} · {{ channel.name }}</b>
+              <p>{{ reason(channel) }}</p>
+            </div>
+            <span class="status-badge" [ngClass]="state(channel)">{{
+              statusLabel(state(channel))
+            }}</span
+            ><time>{{ formatTime(channel.time) }}</time>
+          </article>
+        </section>
+        <div class="panel empty-message" *ngIf="!alarms.length">
+          <mat-icon>check_circle</mat-icon>
+          <h3>目前沒有異常</h3>
+          <p>沒有符合目前篩選條件的感應器。</p>
+        </div>
       </ng-container>
 
-      <ng-container *ngIf="view==='permissions'">
-        <div class="page-inline-actions"><button class="primary-button" (click)="addAccount()"><mat-icon>add</mat-icon>新增帳號</button></div><div class="permission-save-message" [class.is-error]="permissionFailed" *ngIf="permissionMessage" role="status">{{ permissionMessage }}</div>
-        <section class="panel table-panel permission-table"><div class="table-scroll"><table><thead><tr><th>帳號</th><th>顯示名稱</th><th>角色</th><th>通道範圍</th><th>權限</th><th>CRUD 操作</th></tr></thead><tbody><tr *ngFor="let account of accounts"><td><b>{{ account.username }}</b></td><td>{{ account.displayName }}</td><td><span class="role-pill">{{ account.role }}</span></td><td>{{ account.scope }}</td><td class="permission-summary">{{ accountPermissionSummary(account) }}</td><td><div class="permission-row-actions"><button type="button" (click)="openAccountEditor(account, accountEditor)"><mat-icon>edit</mat-icon>編輯／權限</button><button class="danger" *ngIf="account.username!=='admin'" (click)="removeAccount(account)"><mat-icon>delete</mat-icon>刪除</button></div></td></tr></tbody></table></div></section>
+      <ng-container *ngIf="view === 'permissions'">
+        <div class="page-inline-actions">
+          <button class="primary-button" (click)="addAccount()">
+            <mat-icon>add</mat-icon>新增帳號
+          </button>
+        </div>
+        <div
+          class="permission-save-message"
+          [class.is-error]="permissionFailed"
+          *ngIf="permissionMessage"
+          role="status"
+        >
+          {{ permissionMessage }}
+        </div>
+        <section class="panel table-panel permission-table">
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>帳號</th>
+                  <th>顯示名稱</th>
+                  <th>角色</th>
+                  <th>通道範圍</th>
+                  <th>權限</th>
+                  <th>CRUD 操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let account of accounts">
+                  <td>
+                    <b>{{ account.username }}</b>
+                  </td>
+                  <td>{{ account.displayName }}</td>
+                  <td>
+                    <span class="role-pill">{{ account.role }}</span>
+                  </td>
+                  <td>{{ account.scope }}</td>
+                  <td class="permission-summary">
+                    {{ accountPermissionSummary(account) }}
+                  </td>
+                  <td>
+                    <div class="permission-row-actions">
+                      <button
+                        type="button"
+                        (click)="openAccountEditor(account, accountEditor)"
+                      >
+                        <mat-icon>edit</mat-icon>編輯／權限</button
+                      ><button
+                        class="danger"
+                        *ngIf="account.username !== 'admin'"
+                        (click)="removeAccount(account)"
+                      >
+                        <mat-icon>delete</mat-icon>刪除
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
       </ng-container>
 
-      <ng-container *ngIf="view==='settings'">
-        <div class="permission-save-message" *ngIf="settingsMessage" role="status">{{ settingsMessage }}</div>
+      <ng-container *ngIf="view === 'settings'">
+        <div
+          class="permission-save-message"
+          *ngIf="settingsMessage"
+          role="status"
+        >
+          {{ settingsMessage }}
+        </div>
         <section class="settings-cards">
           <article class="panel info-card default-limits-card">
-            <span><mat-icon>settings</mat-icon></span><div>
+            <span><mat-icon>settings</mat-icon></span>
+            <div>
               <h3>預設溫度上下限</h3>
               <p>尚未個別儲存的通道皆使用此值；已個別設定的通道不受影響。</p>
-              <p class="limit-source-note">目前預設值：{{ formatValue(defaultLimits.low) }} ～ {{ formatValue(defaultLimits.high) }} °C</p>
-              <div class="limit-inputs"><label>預設溫度下限（°C）<input type="number" step="0.1" [(ngModel)]="defaultLow" [disabled]="!canManageLimits || limitsSaving"></label><label>預設溫度上限（°C）<input type="number" step="0.1" [(ngModel)]="defaultHigh" [disabled]="!canManageLimits || limitsSaving"></label></div>
-              <button class="secondary-button" (click)="saveDefaultLimits()" [disabled]="!canManageLimits || limitsSaving">{{ limitsSaving ? '儲存中…' : '儲存預設值' }}</button>
+              <p class="limit-source-note">
+                目前預設值：{{ formatValue(defaultLimits.low) }} ～
+                {{ formatValue(defaultLimits.high) }} °C
+              </p>
+              <div class="limit-inputs">
+                <label
+                  >預設溫度下限（°C）<input
+                    type="number"
+                    step="0.1"
+                    [(ngModel)]="defaultLow"
+                    [disabled]="!canManageLimits || limitsSaving" /></label
+                ><label
+                  >預設溫度上限（°C）<input
+                    type="number"
+                    step="0.1"
+                    [(ngModel)]="defaultHigh"
+                    [disabled]="!canManageLimits || limitsSaving"
+                /></label>
+              </div>
+              <button
+                class="secondary-button"
+                (click)="saveDefaultLimits()"
+                [disabled]="!canManageLimits || limitsSaving"
+              >
+                {{ limitsSaving ? "儲存中…" : "儲存預設值" }}
+              </button>
               <p role="status">{{ limitsAccessMessage }}</p>
-              <p *ngIf="defaultLimitsMessage" [class.form-error]="defaultLimitsFailed" role="status">{{ defaultLimitsMessage }}</p>
+              <p
+                *ngIf="defaultLimitsMessage"
+                [class.form-error]="defaultLimitsFailed"
+                role="status"
+              >
+                {{ defaultLimitsMessage }}
+              </p>
             </div>
           </article>
           <article class="panel info-card alert-settings-card">
-            <span><mat-icon>volume_up</mat-icon></span><div>
-              <div class="alert-setting-heading"><h3>異常警報聲音</h3><label class="switch"><input type="checkbox" aria-label="啟用警報聲音" [ngModel]="soundEnabled" (ngModelChange)="setAlertEnabled('alarms.sound_enabled', $event)" [disabled]="alertSettingsSaving"><span></span></label></div>
-              <p>{{ soundEnabled ? '已啟用' : '已關閉' }} · 異常持續時，每 {{ soundIntervalSeconds }} 秒播放一次。</p>
-              <div class="alarm-interval-setting"><label>警報聲間隔（秒）<input type="number" min="1" max="300" step="1" [(ngModel)]="pendingSoundIntervalSeconds" [disabled]="alertSettingsSaving"></label><button class="secondary-button" (click)="saveSoundInterval()" [disabled]="alertSettingsSaving">儲存間隔</button></div>
-              <p>與儀錶板刷新頻率獨立；偵測到全部恢復正常、關閉聲音或登出後停止。</p>
-              <button class="test-button" (click)="testSound()" [disabled]="!soundEnabled || alertSettingsSaving"><mat-icon>volume_up</mat-icon>測試聲音</button>
+            <span><mat-icon>volume_up</mat-icon></span>
+            <div>
+              <div class="alert-setting-heading">
+                <h3>異常警報聲音</h3>
+                <label class="switch"
+                  ><input
+                    type="checkbox"
+                    aria-label="啟用警報聲音"
+                    [ngModel]="soundEnabled"
+                    (ngModelChange)="
+                      setAlertEnabled('alarms.sound_enabled', $event)
+                    "
+                    [disabled]="alertSettingsSaving" /><span></span
+                ></label>
+              </div>
+              <p>
+                {{ soundEnabled ? "已啟用" : "已關閉" }} · 異常持續時，每
+                {{ soundIntervalSeconds }} 秒播放一次。
+              </p>
+              <div class="alarm-interval-setting">
+                <label
+                  >警報聲間隔（秒）<input
+                    type="number"
+                    min="1"
+                    max="300"
+                    step="1"
+                    [(ngModel)]="pendingSoundIntervalSeconds"
+                    [disabled]="alertSettingsSaving" /></label
+                ><button
+                  class="secondary-button"
+                  (click)="saveSoundInterval()"
+                  [disabled]="alertSettingsSaving"
+                >
+                  儲存間隔
+                </button>
+              </div>
+              <p>
+                與儀錶板刷新頻率獨立；偵測到全部恢復正常、關閉聲音或登出後停止。
+              </p>
+              <button
+                class="test-button"
+                (click)="testSound()"
+                [disabled]="!soundEnabled || alertSettingsSaving"
+              >
+                <mat-icon>volume_up</mat-icon>測試聲音
+              </button>
             </div>
           </article>
           <article class="panel info-card alert-settings-card">
-            <span><mat-icon>notifications_active</mat-icon></span><div>
-              <div class="alert-setting-heading"><h3>桌面異常通知</h3><label class="switch"><input type="checkbox" aria-label="啟用桌面通知" [ngModel]="notificationsEnabled" (ngModelChange)="setAlertEnabled('notifications.enabled', $event)" [disabled]="alertSettingsSaving"><span></span></label></div>
-              <p>{{ notificationsEnabled ? '已啟用' : '已關閉' }} · 同一異常不會每次刷新重複通知。</p>
-              <button class="test-button" (click)="testNotification()" [disabled]="!notificationsEnabled || alertSettingsSaving"><mat-icon>notifications_active</mat-icon>測試通知</button>
+            <span><mat-icon>notifications_active</mat-icon></span>
+            <div>
+              <div class="alert-setting-heading">
+                <h3>桌面異常通知</h3>
+                <label class="switch"
+                  ><input
+                    type="checkbox"
+                    aria-label="啟用桌面通知"
+                    [ngModel]="notificationsEnabled"
+                    (ngModelChange)="
+                      setAlertEnabled('notifications.enabled', $event)
+                    "
+                    [disabled]="alertSettingsSaving" /><span></span
+                ></label>
+              </div>
+              <p>
+                {{ notificationsEnabled ? "已啟用" : "已關閉" }} ·
+                同一異常不會每次刷新重複通知。
+              </p>
+              <button
+                class="test-button"
+                (click)="testNotification()"
+                [disabled]="!notificationsEnabled || alertSettingsSaving"
+              >
+                <mat-icon>notifications_active</mat-icon>測試通知
+              </button>
               <p>需保持程式執行；Windows 勿擾或關閉通知可能阻擋顯示。</p>
             </div>
           </article>
           <article class="panel info-card alert-settings-card">
-            <span><mat-icon>notifications_active</mat-icon></span><div>
-              <div class="alert-setting-heading"><h3>快照提醒</h3><label class="switch"><input type="checkbox" aria-label="啟用快照提醒" [ngModel]="snapshotReminderEnabled" (ngModelChange)="setAlertEnabled('notifications.snapshot_stale_enabled', $event)" [disabled]="alertSettingsSaving"><span></span></label></div>
-              <p>{{ snapshotReminderEnabled ? '已啟用' : '已關閉' }} · 開啟後，設備資料快照過期時顯示提醒。</p>
+            <span><mat-icon>notifications_active</mat-icon></span>
+            <div>
+              <div class="alert-setting-heading">
+                <h3>快照提醒</h3>
+                <label class="switch"
+                  ><input
+                    type="checkbox"
+                    aria-label="啟用快照提醒"
+                    [ngModel]="snapshotReminderEnabled"
+                    (ngModelChange)="
+                      setAlertEnabled(
+                        'notifications.snapshot_stale_enabled',
+                        $event
+                      )
+                    "
+                    [disabled]="alertSettingsSaving" /><span></span
+                ></label>
+              </div>
+              <p>
+                {{ snapshotReminderEnabled ? "已啟用" : "已關閉" }} ·
+                開啟後，設備資料快照過期時顯示提醒。
+              </p>
               <p>預設關閉，切換後自動儲存。</p>
             </div>
           </article>
-          <div class="alert-settings-feedback" *ngIf="testMessage || alertMessage || soundMessage" role="status"><p *ngIf="testMessage">{{ testMessage }}</p><p *ngIf="alertMessage" class="form-error">{{ alertMessage }}</p><p *ngIf="soundMessage" class="form-error">{{ soundMessage }}</p></div>
-          <article class="panel info-card database-card" [attr.aria-busy]="databaseCleaning">
+          <div
+            class="alert-settings-feedback"
+            *ngIf="testMessage || alertMessage || soundMessage"
+            role="status"
+          >
+            <p *ngIf="testMessage">{{ testMessage }}</p>
+            <p *ngIf="alertMessage" class="form-error">{{ alertMessage }}</p>
+            <p *ngIf="soundMessage" class="form-error">{{ soundMessage }}</p>
+          </div>
+          <article
+            class="panel info-card database-card"
+            [attr.aria-busy]="databaseCleaning"
+          >
             <span><mat-icon>storage</mat-icon></span>
             <div>
               <h3>SQLite 資料庫</h3>
-              <div class="database-status" [ngClass]="databaseState" role="status"><span class="database-status-dot" aria-hidden="true"></span>{{ databaseStatusLabel }}</div>
+              <div
+                class="database-status"
+                [ngClass]="databaseState"
+                role="status"
+              >
+                <span class="database-status-dot" aria-hidden="true"></span
+                >{{ databaseStatusLabel }}
+              </div>
               <p>API 歷史、報表、設定、帳號及權限的單一資料來源。</p>
               <small class="database-path">{{ databaseFileName }}</small>
-              <small class="database-check-time" *ngIf="databaseCheckedAt">最後檢查：{{ formatTime(databaseCheckedAt) }}（每 10 秒更新）</small>
-              <p class="database-error" *ngIf="databaseError">{{ databaseError }}</p>
+              <small class="database-check-time" *ngIf="databaseCheckedAt"
+                >最後檢查：{{ formatTime(databaseCheckedAt) }}（每 10
+                秒更新）</small
+              >
+              <p class="database-error" *ngIf="databaseError">
+                {{ databaseError }}
+              </p>
               <div class="database-actions">
-                <button type="button" class="secondary-button" (click)="checkDatabaseConnection()" [disabled]="databaseChecking || databaseCleaning || databaseState==='browser'"><mat-icon>refresh</mat-icon>{{ databaseChecking ? '檢查中…' : '檢查連線' }}</button>
-                <button type="button" class="secondary-button database-cleanup-button" (click)="cleanupDatabase()" [disabled]="!canCleanupDatabase"><mat-icon>delete</mat-icon>{{ databaseCleaning ? '確認／清理中…' : '清理歷史資料' }}</button>
+                <button
+                  type="button"
+                  class="secondary-button"
+                  (click)="checkDatabaseConnection()"
+                  [disabled]="
+                    databaseChecking ||
+                    databaseCleaning ||
+                    databaseState === 'browser'
+                  "
+                >
+                  <mat-icon>refresh</mat-icon
+                  >{{ databaseChecking ? "檢查中…" : "檢查連線" }}
+                </button>
+                <button
+                  type="button"
+                  class="secondary-button database-cleanup-button"
+                  (click)="cleanupDatabase()"
+                  [disabled]="!canCleanupDatabase"
+                >
+                  <mat-icon>delete</mat-icon
+                  >{{ databaseCleaning ? "確認／清理中…" : "清理歷史資料" }}
+                </button>
               </div>
-              <p *ngIf="databaseState==='browser'">清理功能需以 Electron 桌面版啟動。</p>
-              <p *ngIf="databaseCleanupMessage" class="database-cleanup-result" [class.database-error]="databaseCleanupFailed" role="status">{{ databaseCleanupMessage }}</p>
+              <p *ngIf="databaseState === 'browser'">
+                清理功能需以 Electron 桌面版啟動。
+              </p>
+              <p
+                *ngIf="databaseCleanupMessage"
+                class="database-cleanup-result"
+                [class.database-error]="databaseCleanupFailed"
+                role="status"
+              >
+                {{ databaseCleanupMessage }}
+              </p>
             </div>
           </article>
-          <article class="panel info-card settings-edit-card"><span><mat-icon>dns</mat-icon></span><div><h3>API 資料端點</h3><p>Live 模式每次讀取成功後立即寫入 sensor_readings。</p><input [(ngModel)]="appSettings['api.data_url']" placeholder="http://127.0.0.1:8080/api/data"><button class="secondary-button" (click)="saveDatabaseSetting('api.data_url', appSettings['api.data_url'])">儲存端點</button></div></article>
-          <article class="panel info-card settings-edit-card"><span><mat-icon>key</mat-icon></span><div><h3>EC62 API Token</h3><p>需要驗證時會以 X-EC62-Token Header 傳送。</p><input type="password" [(ngModel)]="appSettings['api.auth_token']" placeholder="未啟用驗證可留空"><button class="secondary-button" (click)="saveDatabaseSetting('api.auth_token', appSettings['api.auth_token'])">儲存 Token</button></div></article>
-          <article class="panel info-card settings-edit-card"><span><mat-icon>storage</mat-icon></span><div><h3>資料模式</h3><p>Mock 也會寫入 SQLite，方便先測試報表。</p><select [(ngModel)]="appSettings['data.mode']"><option value="mock">MOCK · 模擬資料</option><option value="live">LIVE · 正式 API</option></select><button class="secondary-button" (click)="saveDatabaseSetting('data.mode', appSettings['data.mode'])">儲存模式</button></div></article>
-          <article class="panel info-card settings-edit-card"><span><mat-icon>refresh</mat-icon></span><div><h3>更新頻率</h3><p>Dashboard 背景同步與寫入間隔。</p><select [(ngModel)]="appSettings['api.poll_interval_ms']" aria-label="更新頻率"><option *ngFor="let seconds of refreshOptions" [ngValue]="seconds * 1000">{{ seconds }} 秒</option></select><button class="secondary-button" (click)="saveDatabaseSetting('api.poll_interval_ms', appSettings['api.poll_interval_ms'])">儲存頻率</button></div></article>
-          <article class="panel info-card settings-edit-card"><span><mat-icon>table_view</mat-icon></span><div><h3>報表保留天數</h3><p>每次匯入後自動清理超過期限的歷史資料。</p><input type="number" min="1" [(ngModel)]="appSettings['report.retention_days']"><button class="secondary-button" (click)="saveDatabaseSetting('report.retention_days', appSettings['report.retention_days'])">儲存天數</button></div></article>
-          <article class="panel info-card dashboard-status-setting"><span><mat-icon>notifications_active</mat-icon></span><div><h3>儀錶板警報狀態列</h3><p>此設定同樣保存於 SQLite。</p><b>{{ showDashboardStatus ? '目前開啟' : '目前關閉' }}</b></div><label class="switch"><input type="checkbox" [(ngModel)]="showDashboardStatus" (change)="saveDatabaseSetting('dashboard.show_status', showDashboardStatus)"><span></span></label></article>
+          <article class="panel info-card settings-edit-card">
+            <span><mat-icon>dns</mat-icon></span>
+            <div>
+              <h3>API 資料端點</h3>
+              <p>Live 模式每次讀取成功後立即寫入 sensor_readings。</p>
+              <input
+                [(ngModel)]="appSettings['api.data_url']"
+                placeholder="http://127.0.0.1:8080/api/data"
+              /><button
+                class="secondary-button"
+                (click)="
+                  saveDatabaseSetting(
+                    'api.data_url',
+                    appSettings['api.data_url']
+                  )
+                "
+              >
+                儲存端點
+              </button>
+            </div>
+          </article>
+          <article class="panel info-card settings-edit-card">
+            <span><mat-icon>key</mat-icon></span>
+            <div>
+              <h3>EC62 API Token</h3>
+              <p>需要驗證時會以 X-EC62-Token Header 傳送。</p>
+              <input
+                type="password"
+                [(ngModel)]="appSettings['api.auth_token']"
+                placeholder="未啟用驗證可留空"
+              /><button
+                class="secondary-button"
+                (click)="
+                  saveDatabaseSetting(
+                    'api.auth_token',
+                    appSettings['api.auth_token']
+                  )
+                "
+              >
+                儲存 Token
+              </button>
+            </div>
+          </article>
+          <article class="panel info-card settings-edit-card">
+            <span><mat-icon>storage</mat-icon></span>
+            <div>
+              <h3>資料模式</h3>
+              <p>Mock 也會寫入 SQLite，方便先測試報表。</p>
+              <select [(ngModel)]="appSettings['data.mode']">
+                <option value="mock">MOCK · 模擬資料</option>
+                <option value="live">LIVE · 正式 API</option></select
+              ><button
+                class="secondary-button"
+                (click)="
+                  saveDatabaseSetting('data.mode', appSettings['data.mode'])
+                "
+              >
+                儲存模式
+              </button>
+            </div>
+          </article>
+          <article class="panel info-card settings-edit-card">
+            <span><mat-icon>refresh</mat-icon></span>
+            <div>
+              <h3>更新頻率</h3>
+              <p>Dashboard 背景同步與寫入間隔。</p>
+              <select
+                [(ngModel)]="appSettings['api.poll_interval_ms']"
+                aria-label="更新頻率"
+              >
+                <option
+                  *ngFor="let seconds of refreshOptions"
+                  [ngValue]="seconds * 1000"
+                >
+                  {{ seconds }} 秒
+                </option></select
+              ><button
+                class="secondary-button"
+                (click)="
+                  saveDatabaseSetting(
+                    'api.poll_interval_ms',
+                    appSettings['api.poll_interval_ms']
+                  )
+                "
+              >
+                儲存頻率
+              </button>
+            </div>
+          </article>
+          <article class="panel info-card settings-edit-card">
+            <span><mat-icon>table_view</mat-icon></span>
+            <div>
+              <h3>報表保留天數</h3>
+              <p>每次匯入後自動清理超過期限的歷史資料。</p>
+              <input
+                type="number"
+                min="1"
+                [(ngModel)]="appSettings['report.retention_days']"
+              /><button
+                class="secondary-button"
+                (click)="
+                  saveDatabaseSetting(
+                    'report.retention_days',
+                    appSettings['report.retention_days']
+                  )
+                "
+              >
+                儲存天數
+              </button>
+            </div>
+          </article>
+          <article class="panel info-card dashboard-status-setting">
+            <span><mat-icon>notifications_active</mat-icon></span>
+            <div>
+              <h3>儀錶板警報狀態列</h3>
+              <p>此設定同樣保存於 SQLite。</p>
+              <b>{{ showDashboardStatus ? "目前開啟" : "目前關閉" }}</b>
+            </div>
+            <label class="switch"
+              ><input
+                type="checkbox"
+                [(ngModel)]="showDashboardStatus"
+                (change)="
+                  saveDatabaseSetting(
+                    'dashboard.show_status',
+                    showDashboardStatus
+                  )
+                " /><span></span
+            ></label>
+          </article>
         </section>
       </ng-container>
     </main>
   </div>
 </div>
 
-<div class="modal-backdrop" *ngIf="selectedSensor && session" (mousedown)="onSensorBackdropMouseDown($event)">
+<div
+  class="modal-backdrop"
+  *ngIf="selectedSensor && session"
+  (mousedown)="onSensorBackdropMouseDown($event)"
+>
   <section class="sensor-modal" [ngClass]="state(selectedSensor)">
-    <header class="sensor-modal-header"><div><span>CH{{ selectedSensor.id }}</span><div><h2>{{ selectedSensor.name }}</h2><small>{{ formatDateTime(selectedSensor.time) }}</small></div></div><button class="icon-button" (click)="selectedSensor=null" [disabled]="limitsSaving" aria-label="關閉"><mat-icon>close</mat-icon></button></header>
-    <div class="sensor-modal-reading"><strong>{{ formatValue(selectedSensor.pv) }}</strong><span>°C</span><aside class="sensor-reading-status"><span class="status-badge" [ngClass]="state(selectedSensor)">{{ statusLabel(state(selectedSensor)) }}</span><small *ngIf="state(selectedSensor)!=='ok'">{{ reason(selectedSensor) }}</small></aside></div>
-    <div class="sensor-stats" aria-label="歷史溫度統計"><div><span>歷史最低（MIN）</span><b>{{ formatValue(selectedSensor.min) }} °C</b></div><div><span>歷史平均（AVG）</span><b>{{ formatValue(selectedSensor.avg) }} °C</b></div><div><span>歷史最高（MAX）</span><b>{{ formatValue(selectedSensor.max) }} °C</b></div></div>
+    <header class="sensor-modal-header">
+      <div>
+        <span>CH{{ selectedSensor.id }}</span>
+        <div>
+          <h2>{{ selectedSensor.name }}</h2>
+          <small>{{ formatDateTime(selectedSensor.time) }}</small>
+        </div>
+      </div>
+      <button
+        class="icon-button"
+        (click)="selectedSensor = null"
+        [disabled]="limitsSaving"
+        aria-label="關閉"
+      >
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
+    <div class="sensor-modal-reading">
+      <strong>{{ formatValue(selectedSensor.pv) }}</strong
+      ><span>°C</span>
+      <aside class="sensor-reading-status">
+        <span class="status-badge" [ngClass]="state(selectedSensor)">{{
+          statusLabel(state(selectedSensor))
+        }}</span
+        ><small *ngIf="state(selectedSensor) !== 'ok'">{{
+          reason(selectedSensor)
+        }}</small>
+      </aside>
+    </div>
+    <div class="sensor-stats" aria-label="歷史溫度統計">
+      <div>
+        <span>歷史最低（MIN）</span
+        ><b>{{ formatValue(selectedSensor.min) }} °C</b>
+      </div>
+      <div>
+        <span>歷史平均（AVG）</span
+        ><b>{{ formatValue(selectedSensor.avg) }} °C</b>
+      </div>
+      <div>
+        <span>歷史最高（MAX）</span
+        ><b>{{ formatValue(selectedSensor.max) }} °C</b>
+      </div>
+    </div>
     <div class="sensor-settings-form">
-      <div class="sensor-settings-title">警報範圍設定</div>
-      <p class="limit-source-note">目前使用{{ selectedSensor.limit_source==='custom' ? '個別設定' : '預設值' }}：{{ formatValue(selectedSensor.web_lo) }} ～ {{ formatValue(selectedSensor.web_hi) }} °C<br>全域預設值：{{ formatValue(defaultLimits.low) }} ～ {{ formatValue(defaultLimits.high) }} °C</p>
-      <div class="limit-inputs"><label>警報溫度下限（°C）<input #sensorLowInput type="number" [(ngModel)]="editLow" step="0.1" [disabled]="!canManageLimits || limitsSaving"></label><label>警報溫度上限（°C）<input type="number" [(ngModel)]="editHigh" step="0.1" [disabled]="!canManageLimits || limitsSaving"></label></div>
-      <p class="limit-source-note">儲存後改用個別設定；尚未儲存的輸入不會生效。</p>
-      <p class="limit-source-note" role="status">{{ limitsAccessMessage }}</p>
-      <div class="modal-message" [class.form-error]="modalFailed" *ngIf="modalMessage" role="status">{{ modalMessage }}</div>
-      <div class="modal-actions"><button class="alarm-ack-button" (click)="acknowledgeAlarm()" [disabled]="limitsSaving || state(selectedSensor)!=='alarm'">確認警報</button><button class="secondary-button" (click)="saveSensorLimits(true)" [disabled]="!canManageLimits || limitsSaving || selectedSensor.limit_source!=='custom'">恢復預設值</button><button class="primary-button" (click)="saveSensorLimits()" [disabled]="!canManageLimits || limitsSaving">{{ limitsSaving ? '儲存中…' : '儲存個別設定' }}</button></div>
+      <div class="sensor-settings-heading">
+        <div>
+          <span class="sensor-settings-title">警報範圍</span>
+          <span class="limit-source-chip">{{
+            selectedSensor.limit_source === "custom" ? "個別設定" : "預設值"
+          }}</span>
+        </div>
+        <small>
+          目前 {{ formatValue(selectedSensor.web_lo) }} ～
+          {{ formatValue(selectedSensor.web_hi) }} °C · 預設
+          {{ formatValue(defaultLimits.low) }} ～
+          {{ formatValue(defaultLimits.high) }} °C
+        </small>
+      </div>
+      <div class="limit-inputs">
+        <label
+          >下限（°C）<input
+            #sensorLowInput
+            type="number"
+            [(ngModel)]="editLow"
+            step="0.1"
+            [disabled]="!canManageLimits || limitsSaving" /></label
+        ><label
+          >上限（°C）<input
+            type="number"
+            [(ngModel)]="editHigh"
+            step="0.1"
+            [disabled]="!canManageLimits || limitsSaving"
+        /></label>
+      </div>
+      <p class="limit-access" role="status">{{ limitsAccessMessage }}</p>
+      <div
+        class="modal-message"
+        [class.form-error]="modalFailed"
+        *ngIf="modalMessage"
+        role="status"
+      >
+        {{ modalMessage }}
+      </div>
+      <div class="modal-actions">
+        <button
+          class="secondary-button"
+          (click)="requestSaveSensorLimits(true)"
+          [disabled]="
+            !canManageLimits ||
+            limitsSaving ||
+            selectedSensor.limit_source !== 'custom'
+          "
+        >
+          恢復預設值</button
+        ><button
+          class="primary-button"
+          (click)="requestSaveSensorLimits()"
+          [disabled]="!canManageLimits || limitsSaving"
+        >
+          {{ limitsSaving ? "儲存中…" : "儲存個別設定" }}
+        </button>
+      </div>
     </div>
   </section>
 </div>
 
-<dialog #accountEditor class="account-editor-dialog" aria-labelledby="account-editor-title" (cancel)="$event.preventDefault(); closeAccountEditor()">
-  <form *ngIf="accountDraft" (ngSubmit)="saveAccountEdit()" [attr.aria-busy]="accountSaving || accountEditorLoading">
-    <header><h2 id="account-editor-title">編輯帳號／權限</h2><button type="button" class="icon-button" (click)="closeAccountEditor()" [disabled]="accountSaving" aria-label="關閉編輯視窗"><mat-icon>close</mat-icon></button></header>
-    <fieldset [disabled]="accountSaving || accountEditorLoading || !accountEditingAvailable">
-      <div class="account-editor-fields">
-        <label>帳號<input [value]="accountDraft.username" readonly></label>
-        <label>顯示名稱<input name="displayName" [(ngModel)]="accountDraft.displayName" required maxlength="80" autofocus></label>
-        <label>角色<select name="roleCode" [(ngModel)]="accountDraft.roleCode" [disabled]="accountAccessProtected" required><option *ngIf="!accountRoles.length" [value]="accountDraft.roleCode">{{ accountDraft.role }}</option><option *ngFor="let role of accountRoles" [value]="role.code">{{ role.displayName }}</option></select></label>
-        <label>通道範圍<input name="scope" [(ngModel)]="accountDraft.scope" placeholder="all 或 CH001-CH100" maxlength="200"></label>
+<div
+  class="limit-change-backdrop"
+  *ngIf="pendingLimitChange"
+  role="presentation"
+>
+  <section
+    class="limit-change-dialog"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="limit-change-title"
+  >
+    <header>
+      <span><mat-icon>warning</mat-icon></span>
+      <div>
+        <h2 id="limit-change-title">警報狀態將變更</h2>
+        <p>{{ pendingLimitChange.message }}</p>
       </div>
-      <label class="account-active-toggle"><input type="checkbox" name="active" [(ngModel)]="accountDraft.active" [disabled]="accountAccessProtected">啟用帳號</label>
+    </header>
+    <footer>
+      <button class="secondary-button" (click)="cancelLimitChange()">
+        取消
+      </button>
+      <button class="primary-button" (click)="confirmLimitChange()">
+        確認儲存
+      </button>
+    </footer>
+  </section>
+</div>
+
+<dialog
+  #accountEditor
+  class="account-editor-dialog"
+  aria-labelledby="account-editor-title"
+  (cancel)="$event.preventDefault(); closeAccountEditor()"
+>
+  <form
+    *ngIf="accountDraft"
+    (ngSubmit)="saveAccountEdit()"
+    [attr.aria-busy]="accountSaving || accountEditorLoading"
+  >
+    <header>
+      <h2 id="account-editor-title">編輯帳號／權限</h2>
+      <button
+        type="button"
+        class="icon-button"
+        (click)="closeAccountEditor()"
+        [disabled]="accountSaving"
+        aria-label="關閉編輯視窗"
+      >
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
+    <fieldset
+      [disabled]="
+        accountSaving || accountEditorLoading || !accountEditingAvailable
+      "
+    >
+      <div class="account-editor-fields">
+        <label>帳號<input [value]="accountDraft.username" readonly /></label>
+        <label
+          >顯示名稱<input
+            name="displayName"
+            [(ngModel)]="accountDraft.displayName"
+            required
+            maxlength="80"
+            autofocus
+        /></label>
+        <label
+          >手機<input
+            name="phone"
+            [(ngModel)]="accountDraft.phone"
+            inputmode="tel"
+            maxlength="30"
+            placeholder="選填"
+        /></label>
+        <label
+          >信箱<input
+            name="email"
+            [(ngModel)]="accountDraft.email"
+            type="email"
+            maxlength="254"
+            placeholder="選填"
+        /></label>
+        <label
+          >角色<select
+            name="roleCode"
+            [(ngModel)]="accountDraft.roleCode"
+            [disabled]="accountAccessProtected"
+            required
+          >
+            <option
+              *ngIf="!accountRoles.length"
+              [value]="accountDraft.roleCode"
+            >
+              {{ accountDraft.role }}
+            </option>
+            <option *ngFor="let role of accountRoles" [value]="role.code">
+              {{ role.displayName }}
+            </option>
+          </select></label
+        >
+        <label
+          >通道範圍<input
+            name="scope"
+            [(ngModel)]="accountDraft.scope"
+            placeholder="all 或 CH001-CH100"
+            maxlength="200"
+        /></label>
+      </div>
+      <label class="account-active-toggle"
+        ><input
+          type="checkbox"
+          name="active"
+          [(ngModel)]="accountDraft.active"
+          [disabled]="accountAccessProtected"
+        />啟用帳號</label
+      >
     </fieldset>
-    <p *ngIf="accountAccessProtected" class="account-editor-note">內建管理員及目前登入帳號不可停用或變更角色。</p>
-    <section class="account-role-preview" aria-label="角色權限"><h3>角色權限</h3><p *ngIf="accountEditorLoading">讀取中…</p><ul *ngIf="!accountEditorLoading && selectedAccountPermissions.length"><li *ngFor="let permission of selectedAccountPermissions">{{ permission.label }}</li></ul><p *ngIf="!accountEditorLoading && !selectedAccountPermissions.length">尚無可顯示的權限</p></section>
-    <p class="account-editor-note">權限由角色決定；變更角色或停用後，該帳號的其他登入工作階段將失效。此處不修改密碼。</p>
-    <p *ngIf="accountEditorError" class="form-error" role="alert">{{ accountEditorError }}</p>
-    <footer><button type="button" class="secondary-button" (click)="closeAccountEditor()" [disabled]="accountSaving">取消</button><button type="submit" class="primary-button" [disabled]="accountSaving || accountEditorLoading || !accountEditingAvailable || !accountRoles.length">{{ accountSaving ? '儲存中…' : '儲存變更' }}</button></footer>
+    <p *ngIf="accountAccessProtected" class="account-editor-note">
+      內建管理員及目前登入帳號不可停用或變更角色。
+    </p>
+    <section class="account-role-preview" aria-label="角色權限">
+      <h3>角色權限</h3>
+      <p *ngIf="accountEditorLoading">讀取中…</p>
+      <ul *ngIf="!accountEditorLoading && selectedAccountPermissions.length">
+        <li *ngFor="let permission of selectedAccountPermissions">
+          {{ permission.label }}
+        </li>
+      </ul>
+      <p *ngIf="!accountEditorLoading && !selectedAccountPermissions.length">
+        尚無可顯示的權限
+      </p>
+    </section>
+    <p class="account-editor-note">
+      權限由角色決定；變更角色或停用後，該帳號的其他登入工作階段將失效。此處不修改密碼。
+    </p>
+    <p *ngIf="accountEditorError" class="form-error" role="alert">
+      {{ accountEditorError }}
+    </p>
+    <footer>
+      <button
+        type="button"
+        class="secondary-button"
+        (click)="closeAccountEditor()"
+        [disabled]="accountSaving"
+      >
+        取消</button
+      ><button
+        type="submit"
+        class="primary-button"
+        [disabled]="
+          accountSaving ||
+          accountEditorLoading ||
+          !accountEditingAvailable ||
+          !accountRoles.length
+        "
+      >
+        {{ accountSaving ? "儲存中…" : "儲存變更" }}
+      </button>
+    </footer>
   </form>
 </dialog>
 
-<div class="refresh-rate-backdrop" *ngIf="refreshDialogOpen" (mousedown)="onRefreshBackdropMouseDown($event)">
-  <section class="refresh-rate-dialog"><header><div><mat-icon>refresh</mat-icon><h2>設定刷新頻率</h2></div><button class="icon-button" (click)="refreshDialogOpen=false" aria-label="關閉"><mat-icon>close</mat-icon></button></header><p>Dashboard 將依照選擇的間隔，自動更新 Sensor 資料。</p><div class="refresh-rate-options"><button *ngFor="let option of refreshOptions" [class.active]="pendingRefreshSeconds===option" (click)="pendingRefreshSeconds=option">{{ option }}<span>秒</span></button></div><footer><button class="secondary-button" (click)="refreshDialogOpen=false">取消</button><button class="primary-button" (click)="applyRefreshRate()">套用設定</button></footer></section>
+<div
+  class="refresh-rate-backdrop"
+  *ngIf="refreshDialogOpen"
+  (mousedown)="onRefreshBackdropMouseDown($event)"
+>
+  <section class="refresh-rate-dialog">
+    <header>
+      <div>
+        <mat-icon>refresh</mat-icon>
+        <h2>設定刷新頻率</h2>
+      </div>
+      <button
+        class="icon-button"
+        (click)="refreshDialogOpen = false"
+        aria-label="關閉"
+      >
+        <mat-icon>close</mat-icon>
+      </button>
+    </header>
+    <p>Dashboard 將依照選擇的間隔，自動更新 Sensor 資料。</p>
+    <div class="refresh-rate-options">
+      <button
+        *ngFor="let option of refreshOptions"
+        [class.active]="pendingRefreshSeconds === option"
+        (click)="pendingRefreshSeconds = option"
+      >
+        {{ option }}<span>秒</span>
+      </button>
+    </div>
+    <footer>
+      <button class="secondary-button" (click)="refreshDialogOpen = false">
+        取消</button
+      ><button class="primary-button" (click)="applyRefreshRate()">
+        套用設定
+      </button>
+    </footer>
+  </section>
 </div>

@@ -2,7 +2,7 @@
   "name": "angular-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "E62/C62 sensor monitoring dashboard",
+  "description": "C62 sensor monitoring dashboard",
   "main": "electron/main.cjs",
   "scripts": {
     "start": "ng serve --host 127.0.0.1",
@@ -36,8 +36,8 @@
     "typescript": "~5.9.2"
   },
   "build": {
-    "appId": "tw.com.e62.dashboard.angular.demo",
-    "productName": "E62 Dashboard",
+    "appId": "tw.com.c62.dashboard.angular.demo",
+    "productName": "C62 Dashboard",
     "asar": true,
     "directories": {
       "output": "release"
@@ -53,7 +53,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "E62-Dashboard-Setup-${version}-Windows-${arch}.${ext}"
+      "artifactName": "C62-Dashboard-Setup-${version}-Windows-${arch}.${ext}"
     },
     "win": {
       "target": [
@@ -64,7 +64,7 @@
           ]
         }
       ],
-      "artifactName": "E62-Dashboard-${version}-Windows-${arch}.${ext}"
+      "artifactName": "C62-Dashboard-${version}-Windows-${arch}.${ext}"
     }
   }
 }

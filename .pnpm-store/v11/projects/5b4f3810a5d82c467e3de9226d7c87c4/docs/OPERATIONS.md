@@ -1,17 +1,17 @@
-# E62 Dashboard 使用與維運手冊
+# C62 Dashboard 使用與維運手冊
 
 ## 1. 部署與資料位置
 
 客戶端不需安裝 Node.js、Angular 或 SQLite，直接執行：
 
 ```text
-E62-Angular-Dashboard-Demo-1.0.0-Windows-x64.exe
+C62-Dashboard-1.0.0-Windows-x64.exe
 ```
 
 Portable EXE 可搬動，但資料庫保存在：
 
 ```text
-%APPDATA%\angular-dashboard\data\e62-dashboard.sqlite3
+%APPDATA%\angular-dashboard\data\c62-dashboard.sqlite3
 ```
 
 ## 2. 初次設定
@@ -79,4 +79,3 @@ Portable EXE 可搬動，但資料庫保存在：
 - CSV 可由 Excel 正確顯示中文。
 - 備份位置、週期、保留代數與還原負責人已確認。
 - 已依實際通道數與頻率完成容量估算。
-

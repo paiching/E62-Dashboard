@@ -1,21 +1,30 @@
-const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('e62Db', {
-  bootstrap: () => ipcRenderer.invoke('db:bootstrap'),
-  status: () => ipcRenderer.invoke('db:status'),
-  focusEditor: () => ipcRenderer.invoke('editor:focus'),
-  notify: (token, body, test = false) => ipcRenderer.invoke('alerts:notify', { token, body, test }),
-  cleanupHistory: (token) => ipcRenderer.invoke('db:cleanup-history', { token }),
-  login: (username,password) => ipcRenderer.invoke('auth:login',{username,password}),
-  logout: (token) => ipcRenderer.invoke('auth:logout',token),
-  saveSetting: (token,key,value) => ipcRenderer.invoke('settings:save',{token,key,value}),
-  saveChannelLimits: (token,channelId,limits) => ipcRenderer.invoke('channels:save-limits',{token,channelId,limits}),
-  ingestSnapshot: (token,snapshot,source='mock') => ipcRenderer.invoke('readings:ingest',{token,snapshot,source}),
-  syncApi: (token,persist=true) => ipcRenderer.invoke('api:sync',{token,persist}),
-  latestChannels: (token) => ipcRenderer.invoke('readings:latest',token),
-  queryReport: (token,filter) => ipcRenderer.invoke('reports:query',{token,filter}),
-  exportReport: (token,filter) => ipcRenderer.invoke('reports:export',{token,filter}),
-  listUsers: (token) => ipcRenderer.invoke('users:list',token),
-  saveUser: (token,user) => ipcRenderer.invoke('users:save',{token,user}),
-  deleteUser: (token,id) => ipcRenderer.invoke('users:delete',{token,id}),
-  listRoles: (token) => ipcRenderer.invoke('roles:list',token),
+const { contextBridge, ipcRenderer } = require("electron");
+contextBridge.exposeInMainWorld("c62Db", {
+  bootstrap: () => ipcRenderer.invoke("db:bootstrap"),
+  status: () => ipcRenderer.invoke("db:status"),
+  focusEditor: () => ipcRenderer.invoke("editor:focus"),
+  notify: (token, body, test = false) =>
+    ipcRenderer.invoke("alerts:notify", { token, body, test }),
+  cleanupHistory: (token) =>
+    ipcRenderer.invoke("db:cleanup-history", { token }),
+  login: (username, password) =>
+    ipcRenderer.invoke("auth:login", { username, password }),
+  logout: (token) => ipcRenderer.invoke("auth:logout", token),
+  saveSetting: (token, key, value) =>
+    ipcRenderer.invoke("settings:save", { token, key, value }),
+  saveChannelLimits: (token, channelId, limits) =>
+    ipcRenderer.invoke("channels:save-limits", { token, channelId, limits }),
+  ingestSnapshot: (token, snapshot, source = "mock") =>
+    ipcRenderer.invoke("readings:ingest", { token, snapshot, source }),
+  syncApi: (token, persist = true) =>
+    ipcRenderer.invoke("api:sync", { token, persist }),
+  latestChannels: (token) => ipcRenderer.invoke("readings:latest", token),
+  queryReport: (token, filter) =>
+    ipcRenderer.invoke("reports:query", { token, filter }),
+  exportReport: (token, filter) =>
+    ipcRenderer.invoke("reports:export", { token, filter }),
+  listUsers: (token) => ipcRenderer.invoke("users:list", token),
+  saveUser: (token, user) => ipcRenderer.invoke("users:save", { token, user }),
+  deleteUser: (token, id) => ipcRenderer.invoke("users:delete", { token, id }),
+  listRoles: (token) => ipcRenderer.invoke("roles:list", token),
 });

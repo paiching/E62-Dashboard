@@ -38,10 +38,14 @@ test('save sends edited values, refreshes rows and closes only after success', a
   const { subject, account, dialog } = setup();
   await subject.openAccountEditor(account, dialog);
   subject.accountDraft.displayName = '  新名稱  ';
+  subject.accountDraft.phone = ' 0926101787 ';
+  subject.accountDraft.email = ' yves@example.com ';
   let received;
   subject.db.saveUser = async (_token, input) => { received = input; return [{ ...input, password: undefined }]; };
   await subject.saveAccountEdit();
   assert.equal(received.displayName, '新名稱');
+  assert.equal(received.phone, '0926101787');
+  assert.equal(received.email, 'yves@example.com');
   assert.equal(received.password, undefined);
   assert.equal(subject.accounts[0].displayName, '新名稱');
   assert.equal(dialog.open, false);
