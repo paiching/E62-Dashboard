@@ -533,3 +533,161 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.alarm-release-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  margin-right: auto;
+  padding: 0 14px;
+  border: 1px solid #edbdc4;
+  border-radius: 8px;
+  background: #fdecef;
+  color: var(--red);
+  font-weight: 850;
+  cursor: pointer;
+}
+.alarm-release-button .mat-icon {
+  width: 20px;
+  height: 20px;
+  font-size: 20px;
+  flex-basis: 20px;
+}
+.alarm-release-button:hover:not(:disabled) {
+  background: #f9dce1;
+  border-color: #df8794;
+}
+.alarm-release-note {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.alarm-release-dialog header > span {
+  background: #fdecef;
+  color: var(--red);
+}
+.alarm-release-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0 20px 18px;
+  border: 0;
+}
+.alarm-release-body label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+.alarm-release-body select,
+.alarm-release-body input:not([type="checkbox"]) {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+.alarm-release-body .alarm-release-save {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.alarm-release-dialog .alarm-release-hint {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 7px;
+  background: #fff6e5;
+  color: #8a5a00;
+  font-size: 12px;
+}
+.alarm-release-body .form-error {
+  margin: 0;
+}
+.alarm-release-confirm {
+  background: var(--red);
+  border-color: var(--red);
+}
+.release-reason-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+.release-reason-list li {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #f8fafc;
+  font-size: 12px;
+}
+.release-reasons-card .release-reason-list .icon-button {
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.release-reason-list .icon-button .mat-icon {
+  width: 16px;
+  height: 16px;
+  font-size: 16px;
+}
+.release-reason-empty,
+.release-reason-message {
+  font-size: 12px;
+}
+.sensor-reading-status .alarm-release-note {
+  color: var(--muted);
+}
+.release-reason-list li.editing {
+  padding-left: 4px;
+}
+.release-reasons-card .release-reason-list .release-reason-rename {
+  width: 140px;
+  height: 26px;
+  margin: 0;
+  padding: 0 8px;
+  font-size: 12px;
+}
+.release-reason-count {
+  min-width: 16px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e5eff9;
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+}
+.release-reasons-card .release-reason-list .icon-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.alarm-record-download {
+  color: var(--blue);
+}
+.alarm-record-download:disabled {
+  color: #a9b6c4;
+  background: #f3f6f9;
+  border-color: var(--line);
+  cursor: not-allowed;
+  opacity: 1;
+}

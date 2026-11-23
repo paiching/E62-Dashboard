@@ -40,6 +40,8 @@ function initializeDatabase(userDataPath, forceMockMode = false) {
     CREATE INDEX IF NOT EXISTS idx_readings_recorded ON sensor_readings(recorded_at DESC);
     CREATE INDEX IF NOT EXISTS idx_readings_channel_time ON sensor_readings(channel_id,recorded_at DESC);
     CREATE INDEX IF NOT EXISTS idx_readings_state_time ON sensor_readings(state,recorded_at DESC);
+    CREATE TABLE IF NOT EXISTS alarm_releases(id INTEGER PRIMARY KEY AUTOINCREMENT,channel_id TEXT NOT NULL,alarm_reason TEXT,release_reason TEXT NOT NULL,username TEXT NOT NULL,display_name TEXT NOT NULL DEFAULT '',released_at TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,cleared_at TEXT);
+    CREATE INDEX IF NOT EXISTS idx_alarm_releases_active ON alarm_releases(channel_id,active);
     CREATE TABLE IF NOT EXISTS ingest_log(id INTEGER PRIMARY KEY AUTOINCREMENT,batch_id TEXT NOT NULL UNIQUE,source TEXT NOT NULL,source_url TEXT,channel_count INTEGER NOT NULL,received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL,error_message TEXT);
   `);
   const userColumns = new Set(
@@ -96,6 +98,7 @@ function seedDatabase() {
       "alarm",
       "未個別設定通道的預設溫度上下限",
     ],
+    ["alarms.release_reasons", [], "alarm", "解除警報時可選擇的理由"],
   ];
   const insertSetting = database.prepare(
     "INSERT OR IGNORE INTO app_settings(key,value_json,category,description) VALUES(?,?,?,?)",
@@ -285,6 +288,8 @@ function login(username, password) {
     session,
     settings: settingsObject(),
     channelLimits: channelLimitsObject(),
+    alarmReleases: alarmReleasesObject(),
+    alarmRecordCounts: alarmRecordCounts(),
     menus: menusForRole(user.role_id),
   };
 }
@@ -374,6 +379,16 @@ function saveSetting(token, key, value) {
     }
     return settingsObject();
   }
+  if (key === "alarms.release_reasons") {
+    value = normalizeReleaseReasons(value);
+    const current = settingsObject()["alarms.release_reasons"];
+    const usage = releaseReasonUsageObject();
+    const locked = (Array.isArray(current) ? current : []).find(
+      (reason) => !value.includes(reason) && usage[reason],
+    );
+    if (locked)
+      throw new Error(`「${locked}」已有解除紀錄，不能刪除，可改名`);
+  }
   if (key === "api.poll_interval_ms" && ![10000, 30000, 60000].includes(value))
     throw new Error("刷新頻率僅支援 10、30、60 秒");
   if (
@@ -400,6 +415,168 @@ function saveSetting(token, key, value) {
     )
     .run(json(value), key);
   return settingsObject();
+}
+const RELEASE_REASON_MAX_LENGTH = 60;
+const RELEASE_REASON_MAX_COUNT = 50;
+// A release silences a channel for one minute; if it is still out of range
+// after that, the alarm fires again.
+const ALARM_RELEASE_DURATION_MS = 60_000;
+const releaseCutoff = (now = Date.now()) =>
+  new Date(now - ALARM_RELEASE_DURATION_MS).toISOString();
+function normalizeReleaseReason(value) {
+  const reason = String(value ?? "").trim().replace(/\s+/g, " ");
+  if (!reason) throw new Error("請輸入解除理由");
+  if (reason.length > RELEASE_REASON_MAX_LENGTH)
+    throw new Error(`解除理由不可超過 ${RELEASE_REASON_MAX_LENGTH} 個字`);
+  return reason;
+}
+function normalizeReleaseReasons(value) {
+  if (!Array.isArray(value)) throw new Error("解除理由設定必須為清單");
+  const reasons = [];
+  for (const item of value) {
+    const reason = normalizeReleaseReason(item);
+    if (!reasons.includes(reason)) reasons.push(reason);
+  }
+  if (reasons.length > RELEASE_REASON_MAX_COUNT)
+    throw new Error(`解除理由最多 ${RELEASE_REASON_MAX_COUNT} 筆`);
+  return reasons;
+}
+function releaseReasonUsageObject() {
+  return Object.fromEntries(
+    database
+      .prepare(
+        "SELECT release_reason,COUNT(*) AS count FROM alarm_releases GROUP BY release_reason",
+      )
+      .all()
+      .map((row) => [row.release_reason, Number(row.count)]),
+  );
+}
+function releaseReasonUsage(token) {
+  requireSession(token, "dashboard.view");
+  return releaseReasonUsageObject();
+}
+function renameReleaseReason(token, from, to) {
+  requireSession(token, "settings.manage");
+  const oldName = String(from ?? "").trim();
+  const newName = normalizeReleaseReason(to);
+  const current = settingsObject()["alarms.release_reasons"];
+  const reasons = Array.isArray(current) ? current : [];
+  const index = reasons.indexOf(oldName);
+  if (index < 0) throw new Error("找不到要改名的解除理由，請重新整理");
+  if (newName !== oldName && reasons.includes(newName))
+    throw new Error("此理由已存在");
+  const next = [...reasons];
+  next[index] = newName;
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database
+      .prepare(
+        "UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key='alarms.release_reasons'",
+      )
+      .run(json(normalizeReleaseReasons(next)));
+    // Keep past records grouped under the option they were filed with.
+    database
+      .prepare(
+        "UPDATE alarm_releases SET release_reason=? WHERE release_reason=?",
+      )
+      .run(newName, oldName);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+  return {
+    settings: settingsObject(),
+    releases: alarmReleasesObject(),
+    usage: releaseReasonUsageObject(),
+  };
+}
+function alarmRecordCounts() {
+  return Object.fromEntries(
+    database
+      .prepare(
+        "SELECT channel_id,COUNT(*) AS count FROM alarm_releases GROUP BY channel_id",
+      )
+      .all()
+      .map((row) => [row.channel_id, Number(row.count)]),
+  );
+}
+function alarmReleasesObject() {
+  return Object.fromEntries(
+    database
+      .prepare(
+        "SELECT channel_id,release_reason,username,display_name,released_at FROM alarm_releases WHERE active=1 AND released_at>?",
+      )
+      .all(releaseCutoff())
+      .map((row) => [
+        row.channel_id,
+        {
+          reason: row.release_reason,
+          username: row.username,
+          displayName: row.display_name,
+          releasedAt: row.released_at,
+        },
+      ]),
+  );
+}
+function releaseAlarm(token, channelId, reason, saveAsOption = false) {
+  const session = requireSession(token, "alarms.ack");
+  const id = String(channelId ?? "").trim();
+  const text = normalizeReleaseReason(reason);
+  const row = database
+    .prepare("SELECT raw_json FROM sensor_channels WHERE channel_id=?")
+    .get(id);
+  if (!row) throw new Error("通道不存在，請先刷新資料");
+  const [channel] = applyChannelLimits([
+    { ...parseJson(row.raw_json, {}), id },
+  ]);
+  if (channelState(channel) === "ok")
+    throw new Error("此通道目前沒有警報，無需解除");
+  if (saveAsOption && !session.permissions.includes("settings.manage"))
+    throw new Error("沒有系統設定權限，無法新增解除理由選項");
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    const now = new Date().toISOString();
+    database
+      .prepare(
+        "UPDATE alarm_releases SET active=0,cleared_at=? WHERE channel_id=? AND active=1",
+      )
+      .run(now, id);
+    database
+      .prepare(
+        "INSERT INTO alarm_releases(channel_id,alarm_reason,release_reason,username,display_name,released_at) VALUES(?,?,?,?,?,?)",
+      )
+      .run(
+        id,
+        channelReason(channel),
+        text,
+        session.username,
+        session.displayName ?? "",
+        now,
+      );
+    if (saveAsOption) {
+      const current = settingsObject()["alarms.release_reasons"];
+      const reasons = normalizeReleaseReasons([
+        ...(Array.isArray(current) ? current : []),
+        text,
+      ]);
+      database
+        .prepare(
+          "UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key='alarms.release_reasons'",
+        )
+        .run(json(reasons));
+    }
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+  return {
+    releases: alarmReleasesObject(),
+    recordCounts: alarmRecordCounts(),
+    settings: settingsObject(),
+    usage: releaseReasonUsageObject(),
+  };
 }
 function getAlertSettings(token, test = false) {
   requireSession(token, test ? "tests.run" : "dashboard.view");
@@ -553,6 +730,7 @@ function hydrateChannels(channels) {
   const history = database.prepare(
     "SELECT recorded_at AS time,pv AS value FROM sensor_readings WHERE channel_id=? AND pv IS NOT NULL ORDER BY recorded_at DESC,id DESC LIMIT 500",
   );
+  const releases = alarmReleasesObject();
   return applyChannelLimits(channels).map((channel) => {
     const id = String(channel.id ?? "").trim(),
       summary = stats.get(id),
@@ -567,7 +745,10 @@ function hydrateChannels(channels) {
       avg: summary.avg,
       count: Number(summary.count),
       web_alarm: Boolean(channel.web_alarm),
-      web_alarm_ack: Boolean(channel.web_alarm_ack),
+      web_alarm_ack:
+        Boolean(channel.web_alarm_ack) ||
+        (Boolean(releases[id]) && channelState(channel) !== "ok"),
+      alarm_release: releases[id] ?? null,
     };
   });
 }
@@ -584,11 +765,19 @@ function ingestSnapshot(snapshot, source = "api", sourceUrl = null) {
   const upsert = database.prepare(
     `INSERT INTO sensor_channels(channel_id,name,sv,alarm_low,alarm_high,last_pv,last_state,last_seen_at,raw_json,updated_at) VALUES(?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP) ON CONFLICT(channel_id) DO UPDATE SET name=excluded.name,sv=excluded.sv,alarm_low=excluded.alarm_low,alarm_high=excluded.alarm_high,last_pv=excluded.last_pv,last_state=excluded.last_state,last_seen_at=excluded.last_seen_at,raw_json=excluded.raw_json,updated_at=CURRENT_TIMESTAMP`,
   );
+  const clearRelease = database.prepare(
+    "UPDATE alarm_releases SET active=0,cleared_at=? WHERE channel_id=? AND active=1",
+  );
+  const expireReleases = database.prepare(
+    "UPDATE alarm_releases SET active=0,cleared_at=? WHERE active=1 AND released_at<=?",
+  );
   const insert = database.prepare(
     "INSERT INTO sensor_readings(batch_id,channel_id,pv,sv,state,alarm_low,alarm_high,recorded_at,source,raw_json) VALUES(?,?,?,?,?,?,?,?,?,?)",
   );
   database.exec("BEGIN IMMEDIATE");
   try {
+    const nowIso = new Date().toISOString();
+    expireReleases.run(nowIso, releaseCutoff());
     for (const channel of channels) {
       const id = String(channel.id ?? "").trim();
       if (!id) throw new Error("API Channel 缺少 id");
@@ -599,6 +788,8 @@ function ingestSnapshot(snapshot, source = "api", sourceUrl = null) {
         low = channel.web_lo == null ? null : Number(channel.web_lo),
         high = channel.web_hi == null ? null : Number(channel.web_hi);
       const normalized = { ...channel, id, time: rowTime };
+      // A release only covers the current abnormal episode; recovery re-arms it.
+      if (state === "ok") clearRelease.run(rowTime, id);
       upsert.run(
         id,
         String(channel.name ?? `CH${id}`),
@@ -824,6 +1015,65 @@ async function exportReport(token, filter, browserWindow, dialog) {
   fs.writeFileSync(result.filePath, content, "utf8");
   return { canceled: false, filePath: result.filePath, rowCount: rows.length };
 }
+function localTimestamp(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  const pad = (part) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+function alarmReleaseRows(channelId) {
+  const id = String(channelId ?? "").trim();
+  return database
+    .prepare(
+      "SELECT a.channel_id AS id,COALESCE(c.name,'') AS name,a.alarm_reason,a.release_reason,a.display_name,a.username,a.released_at,a.cleared_at,a.active FROM alarm_releases a LEFT JOIN sensor_channels c ON c.channel_id=a.channel_id WHERE a.channel_id=? ORDER BY a.released_at DESC,a.id DESC",
+    )
+    .all(id);
+}
+async function exportAlarmReleases(token, channelId, browserWindow, dialog) {
+  requireSession(token, "alarms.view");
+  const id = String(channelId ?? "").trim();
+  const rows = alarmReleaseRows(id);
+  if (!rows.length) throw new Error("此感應器尚無解除警報紀錄");
+  const result = await dialog.showSaveDialog(browserWindow, {
+    title: "匯出解除警報紀錄",
+    defaultPath: `CH${id}_解除警報紀錄_${new Date().toISOString().slice(0, 10)}.csv`,
+    filters: [{ name: "Excel CSV", extensions: ["csv"] }],
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  const header = [
+    "通道",
+    "名稱",
+    "警報原因",
+    "解除理由",
+    "解除人員",
+    "帳號",
+    "解除時間",
+    "恢復時間",
+    "狀態",
+  ];
+  const lines = rows.map((row) =>
+    [
+      `CH${row.id}`,
+      row.name,
+      row.alarm_reason ?? "",
+      row.release_reason,
+      row.display_name,
+      row.username,
+      localTimestamp(row.released_at),
+      localTimestamp(row.cleared_at),
+      row.active ? "解除中" : "已結束",
+    ]
+      .map(csvCell)
+      .join(","),
+  );
+  fs.writeFileSync(
+    result.filePath,
+    `\ufeff${header.map(csvCell).join(",")}\r\n${lines.join("\r\n")}\r\n\r\n${["匯出時間", exportTimestamp()].map(csvCell).join(",")}`,
+    "utf8",
+  );
+  return { canceled: false, filePath: result.filePath, rowCount: rows.length };
+}
 
 function listUsers(token) {
   requireSession(token, "users.manage");
@@ -962,6 +1212,13 @@ module.exports = {
   logout,
   saveSetting,
   saveChannelLimits,
+  releaseAlarm,
+  releaseReasonUsage,
+  renameReleaseReason,
+  alarmRecordCounts,
+  ALARM_RELEASE_DURATION_MS,
+  alarmReleaseRows,
+  exportAlarmReleases,
   ingestSnapshotAuthorized,
   syncApi,
   latestSnapshot,

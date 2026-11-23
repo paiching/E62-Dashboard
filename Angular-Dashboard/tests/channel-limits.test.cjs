@@ -282,6 +282,7 @@ const names = [
   "saveSensorLimits",
   "saveDefaultLimits",
   "refreshData",
+  "announceNewAlarms",
 ];
 const members = component.members.filter(
   (node) =>
@@ -293,14 +294,23 @@ const compiled = ts.transpileModule(
   `class Harness { ${members.map((node) => node.getText(ast)).join("\n")} }`,
   { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
 ).outputText;
+const modelModule = { exports: {} };
+new Function(
+  "exports",
+  ts.transpileModule(
+    readFileSync(path.join(__dirname, "../src/app/dashboard.model.ts"), "utf8"),
+    { compilerOptions: { module: ts.ModuleKind.CommonJS } },
+  ).outputText,
+)(modelModule.exports);
 function setup() {
   const initial = [
     { id: "001", web_lo: -100, web_hi: 100, history: [], pv: 5, st: 0 },
   ];
   const Harness = new Function(
     "createMockChannels",
+    "sensorState",
     `${compiled}; return Harness;`,
-  )(() => initial.map((c) => ({ ...c })));
+  )(() => initial.map((c) => ({ ...c })), modelModule.exports.sensorState);
   const subject = Object.assign(new Harness(), {
     channels: initial.map((c) => ({ ...c })),
     channelLimits: {},

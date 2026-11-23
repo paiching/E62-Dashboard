@@ -1097,6 +1097,114 @@
               </button>
             </div>
           </article>
+          <article
+            class="panel info-card settings-edit-card release-reasons-card"
+          >
+            <span><mat-icon>warning</mat-icon></span>
+            <div>
+              <h3>解除理由設定</h3>
+              <p>
+                解除警報時可從下拉選單選擇；未設定時使用者需選「其他」自行填寫。已使用過的理由不能刪除，但可改名。
+              </p>
+              <ul class="release-reason-list" *ngIf="releaseReasons.length">
+                <li
+                  *ngFor="let item of releaseReasons"
+                  [class.editing]="renamingReleaseReason === item"
+                >
+                  <ng-container
+                    *ngIf="renamingReleaseReason === item; else reasonChip"
+                  >
+                    <input
+                      class="release-reason-rename"
+                      [(ngModel)]="renameReleaseReasonText"
+                      [maxlength]="releaseReasonMaxLength"
+                      [attr.aria-label]="'改名解除理由 ' + item"
+                      (keydown.enter)="confirmRenameReleaseReason()"
+                      (keydown.escape)="cancelRenameReleaseReason()"
+                      [disabled]="releaseReasonsSaving"
+
+                    /><button
+                      type="button"
+                      class="icon-button"
+                      (click)="confirmRenameReleaseReason()"
+                      [disabled]="releaseReasonsSaving"
+                      aria-label="儲存名稱"
+                      title="儲存名稱"
+                    >
+                      <mat-icon>check_circle</mat-icon></button
+                    ><button
+                      type="button"
+                      class="icon-button"
+                      (click)="cancelRenameReleaseReason()"
+                      [disabled]="releaseReasonsSaving"
+                      aria-label="取消改名"
+                      title="取消改名"
+                    >
+                      <mat-icon>close</mat-icon>
+                    </button>
+                  </ng-container>
+                  <ng-template #reasonChip>
+                    <span>{{ item }}</span
+                    ><small
+                      class="release-reason-count"
+                      *ngIf="releaseReasonUseCount(item)"
+                      [title]="'已使用 ' + releaseReasonUseCount(item) + ' 次'"
+                      >{{ releaseReasonUseCount(item) }}</small
+                    ><button
+                      type="button"
+                      class="icon-button"
+                      (click)="startRenameReleaseReason(item)"
+                      [disabled]="releaseReasonsSaving"
+                      [attr.aria-label]="'改名解除理由 ' + item"
+                      title="改名"
+                    >
+                      <mat-icon>edit</mat-icon></button
+                    ><button
+                      type="button"
+                      class="icon-button"
+                      (click)="removeReleaseReason(item)"
+                      [disabled]="
+                        releaseReasonsSaving || releaseReasonUseCount(item) > 0
+                      "
+                      [attr.aria-label]="'刪除解除理由 ' + item"
+                      [title]="
+                        releaseReasonUseCount(item)
+                          ? '已有解除紀錄，不能刪除，可改名'
+                          : '刪除'
+                      "
+                    >
+                      <mat-icon>delete</mat-icon>
+                    </button>
+                  </ng-template>
+                </li>
+              </ul>
+              <p class="release-reason-empty" *ngIf="!releaseReasons.length">
+                尚未設定任何解除理由。
+              </p>
+              <input
+                [(ngModel)]="newReleaseReason"
+                [maxlength]="releaseReasonMaxLength"
+                placeholder="例如：設備維修中、除霜作業"
+                aria-label="新增解除理由"
+                (keydown.enter)="addReleaseReason()"
+                [disabled]="releaseReasonsSaving"
+              /><button
+                class="secondary-button"
+                (click)="addReleaseReason()"
+                [disabled]="releaseReasonsSaving"
+              >
+                新增理由
+              </button>
+              <p
+                class="release-reason-message"
+                [class.form-error]="releaseReasonsFailed"
+                *ngIf="releaseReasonsMessage"
+                role="status"
+              >
+                {{ releaseReasonsMessage }}
+              </p>
+            </div>
+          </article>
           <article class="panel info-card dashboard-status-setting">
             <span><mat-icon>notifications_active</mat-icon></span>
             <div>
@@ -1137,6 +1245,26 @@
         </div>
       </div>
       <button
+        type="button"
+        class="icon-button alarm-record-download"
+        (click)="exportAlarmReleases(selectedSensor)"
+        [disabled]="!alarmRecordCount(selectedSensor)"
+        [title]="
+          alarmRecordCount(selectedSensor)
+            ? '下載此感應器解除警報紀錄（' +
+              alarmRecordCount(selectedSensor) +
+              ' 筆，Excel）'
+            : '此感應器尚無解除警報紀錄'
+        "
+        [attr.aria-label]="
+          alarmRecordCount(selectedSensor)
+            ? '下載此感應器解除警報紀錄'
+            : '此感應器尚無解除警報紀錄'
+        "
+      >
+        <mat-icon>download</mat-icon>
+      </button>
+      <button
         class="icon-button"
         (click)="selectedSensor = null"
         [disabled]="limitsSaving"
@@ -1154,7 +1282,17 @@
         }}</span
         ><small *ngIf="state(selectedSensor) !== 'ok'">{{
           reason(selectedSensor)
-        }}</small>
+        }}</small
+        ><small
+          class="alarm-release-note"
+          *ngIf="selectedSensor.web_alarm_ack && selectedSensor.alarm_release"
+          >已解除：{{ selectedSensor.alarm_release.reason }} ·
+          {{
+            selectedSensor.alarm_release.displayName ||
+              selectedSensor.alarm_release.username
+          }}
+          · {{ formatTime(selectedSensor.alarm_release.releasedAt) }}</small
+        >
       </aside>
     </div>
     <div class="sensor-stats" aria-label="歷史溫度統計">
@@ -1213,6 +1351,17 @@
       </div>
       <div class="modal-actions">
         <button
+          *ngIf="state(selectedSensor) !== 'ok'"
+          type="button"
+          class="alarm-release-button"
+          (click)="openReleaseDialog(selectedSensor)"
+          [disabled]="!canReleaseAlarm || limitsSaving"
+          [title]="canReleaseAlarm ? '解除警報' : '目前帳號沒有確認警報權限'"
+          aria-label="解除警報"
+        >
+          <mat-icon>warning</mat-icon>解除警報
+        </button>
+        <button
           class="secondary-button"
           (click)="requestSaveSensorLimits(true)"
           [disabled]="
@@ -1261,6 +1410,81 @@
       </button>
     </footer>
   </section>
+</div>
+
+<div
+  class="limit-change-backdrop"
+  *ngIf="releaseTarget"
+  role="presentation"
+>
+  <form
+    class="limit-change-dialog alarm-release-dialog"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="alarm-release-title"
+    (ngSubmit)="confirmRelease()"
+  >
+    <header>
+      <span><mat-icon>warning</mat-icon></span>
+      <div>
+        <h2 id="alarm-release-title">解除警報</h2>
+        <p>
+          CH{{ releaseTarget.id }} {{ releaseTarget.name }} ·
+          {{ reason(releaseTarget) || statusLabel(state(releaseTarget)) }}
+        </p>
+      </div>
+    </header>
+    <fieldset class="alarm-release-body" [disabled]="releaseSaving">
+      <label
+        >解除理由<select name="releaseChoice" [(ngModel)]="releaseChoice">
+          <option *ngFor="let item of releaseReasons" [value]="item">
+            {{ item }}
+          </option>
+          <option [value]="releaseReasonOther">其他（自行輸入）</option>
+        </select></label
+      >
+      <p class="alarm-release-hint" *ngIf="!releaseReasons.length">
+        尚未設定解除理由，請選擇「其他」並輸入原因；常用理由可至「設定 →
+        解除理由設定」新增。
+      </p>
+      <ng-container *ngIf="releaseChoice === releaseReasonOther">
+        <label
+          >其他原因<input
+            name="releaseCustomReason"
+            [(ngModel)]="releaseCustomReason"
+            [maxlength]="releaseReasonMaxLength"
+            placeholder="請輸入解除原因"
+        /></label>
+        <label class="alarm-release-save" *ngIf="canManageReleaseReasons"
+          ><input
+            type="checkbox"
+            name="releaseSaveAsOption"
+            [(ngModel)]="releaseSaveAsOption"
+          />同時加入解除理由選項</label
+        >
+      </ng-container>
+      <p class="form-error" *ngIf="releaseError" role="alert">
+        {{ releaseError }}
+      </p>
+    </fieldset>
+    <footer>
+      <button
+        type="button"
+        class="secondary-button"
+        (click)="cancelReleaseDialog()"
+        [disabled]="releaseSaving"
+      >
+        取消
+      </button>
+      <button
+        type="submit"
+        class="primary-button alarm-release-confirm"
+        [disabled]="releaseSaving"
+      >
+        {{ releaseSaving ? "解除中…" : "確認解除" }}
+      </button>
+    </footer>
+  </form>
 </div>
 
 <dialog

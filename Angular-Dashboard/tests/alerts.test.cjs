@@ -190,6 +190,7 @@ const component = ast.statements.find(
 );
 const names = [
   "refreshData",
+  "announceNewAlarms",
   "playAlertSound",
   "sendAlertNotification",
   "emitAlarm",

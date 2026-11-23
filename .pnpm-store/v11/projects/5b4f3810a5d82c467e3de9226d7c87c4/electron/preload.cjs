@@ -14,6 +14,18 @@ contextBridge.exposeInMainWorld("c62Db", {
     ipcRenderer.invoke("settings:save", { token, key, value }),
   saveChannelLimits: (token, channelId, limits) =>
     ipcRenderer.invoke("channels:save-limits", { token, channelId, limits }),
+  releaseAlarm: (token, channelId, reason, saveAsOption = false) =>
+    ipcRenderer.invoke("alarms:release", {
+      token,
+      channelId,
+      reason,
+      saveAsOption,
+    }),
+  releaseReasonUsage: (token) => ipcRenderer.invoke("alarms:reason-usage", token),
+  renameReleaseReason: (token, from, to) =>
+    ipcRenderer.invoke("alarms:rename-reason", { token, from, to }),
+  exportAlarmReleases: (token, channelId) =>
+    ipcRenderer.invoke("alarms:export-releases", { token, channelId }),
   ingestSnapshot: (token, snapshot, source = "mock") =>
     ipcRenderer.invoke("readings:ingest", { token, snapshot, source }),
   syncApi: (token, persist = true) =>

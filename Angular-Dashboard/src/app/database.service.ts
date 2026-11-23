@@ -1,6 +1,7 @@
 import { Injectable } from "@angular/core";
 import {
   AlarmLimits,
+  AlarmRelease,
   LocalAccount,
   SensorChannel,
   UserSession,
@@ -17,6 +18,8 @@ export interface DatabaseLogin {
   session: UserSession;
   settings: Record<string, unknown>;
   channelLimits: Record<string, AlarmLimits>;
+  alarmReleases?: Record<string, AlarmRelease>;
+  alarmRecordCounts?: Record<string, number>;
   menus: DatabaseMenu[];
 }
 export interface ReportFilter {
@@ -65,6 +68,12 @@ export interface AccountRole {
   displayName: string;
   permissions: Array<{ code: string; label: string }>;
 }
+export interface AlarmReleaseResult {
+  releases: Record<string, AlarmRelease>;
+  recordCounts?: Record<string, number>;
+  settings: Record<string, unknown>;
+  usage?: Record<string, number>;
+}
 export interface ApiSnapshot {
   schema_version: number;
   status_version: number;
@@ -102,6 +111,22 @@ interface C62DatabaseBridge {
     channelId: string,
     limits: AlarmLimits | null,
   ): Promise<Record<string, AlarmLimits>>;
+  releaseAlarm?(
+    token: string,
+    channelId: string,
+    reason: string,
+    saveAsOption?: boolean,
+  ): Promise<AlarmReleaseResult>;
+  releaseReasonUsage?(token: string): Promise<Record<string, number>>;
+  renameReleaseReason?(
+    token: string,
+    from: string,
+    to: string,
+  ): Promise<AlarmReleaseResult>;
+  exportAlarmReleases?(
+    token: string,
+    channelId: string,
+  ): Promise<{ canceled: boolean; filePath?: string; rowCount?: number }>;
   ingestSnapshot(
     token: string,
     snapshot: unknown,
@@ -170,6 +195,29 @@ export class DatabaseService {
     limits: AlarmLimits | null,
   ) {
     return window.c62Db?.saveChannelLimits(token, channelId, limits);
+  }
+  releaseAlarm(
+    token: string,
+    channelId: string,
+    reason: string,
+    saveAsOption = false,
+  ) {
+    if (!window.c62Db?.releaseAlarm)
+      throw new Error("桌面連線模組版本過舊，請重新啟動桌面程式");
+    return window.c62Db.releaseAlarm(token, channelId, reason, saveAsOption);
+  }
+  releaseReasonUsage(token: string) {
+    return window.c62Db?.releaseReasonUsage?.(token);
+  }
+  renameReleaseReason(token: string, from: string, to: string) {
+    if (!window.c62Db?.renameReleaseReason)
+      throw new Error("桌面連線模組版本過舊，請重新啟動桌面程式");
+    return window.c62Db.renameReleaseReason(token, from, to);
+  }
+  exportAlarmReleases(token: string, channelId: string) {
+    if (!window.c62Db?.exportAlarmReleases)
+      throw new Error("桌面連線模組版本過舊，請重新啟動桌面程式");
+    return window.c62Db.exportAlarmReleases(token, channelId);
   }
   ingestSnapshot(token: string, snapshot: unknown, source = "mock") {
     return window.c62Db?.ingestSnapshot(token, snapshot, source);

@@ -49,6 +49,23 @@ function registerIpc() {
   ipcMain.handle("channels:save-limits", (_event, input) =>
     db.saveChannelLimits(input.token, input.channelId, input.limits),
   );
+  ipcMain.handle("alarms:release", (_event, input) =>
+    db.releaseAlarm(
+      input.token,
+      input.channelId,
+      input.reason,
+      input.saveAsOption === true,
+    ),
+  );
+  ipcMain.handle("alarms:reason-usage", (_event, token) =>
+    db.releaseReasonUsage(token),
+  );
+  ipcMain.handle("alarms:rename-reason", (_event, input) =>
+    db.renameReleaseReason(input.token, input.from, input.to),
+  );
+  ipcMain.handle("alarms:export-releases", (_event, input) =>
+    db.exportAlarmReleases(input.token, input.channelId, mainWindow, dialog),
+  );
   ipcMain.handle("readings:ingest", (_event, input) =>
     db.ingestSnapshotAuthorized(input.token, input.snapshot, input.source),
   );

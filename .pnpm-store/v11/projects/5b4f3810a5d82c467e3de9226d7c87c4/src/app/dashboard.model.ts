@@ -17,6 +17,21 @@ export interface AlarmLimits {
   low: number;
   high: number;
 }
+export interface AlarmRelease {
+  reason: string;
+  username: string;
+  displayName?: string;
+  releasedAt: string;
+}
+/** A release silences a channel for one minute, then the alarm re-arms. */
+export const ALARM_RELEASE_DURATION_MS = 60_000;
+export function alarmReleaseExpired(
+  release: AlarmRelease,
+  now = Date.now(),
+): boolean {
+  const at = Date.parse(release.releasedAt);
+  return !Number.isFinite(at) || now - at >= ALARM_RELEASE_DURATION_MS;
+}
 export interface SensorChannel {
   id: string;
   name: string;
@@ -36,6 +51,7 @@ export interface SensorChannel {
   web_alarm: boolean;
   web_alarm_ack: boolean;
   alarm_reason?: string | null;
+  alarm_release?: AlarmRelease | null;
 }
 
 export interface UserSession {
@@ -60,6 +76,8 @@ export interface LocalAccount {
 }
 
 export function sensorState(channel: SensorChannel): SensorState {
+  // A Dashboard release (with reason) silences the current alarm or error episode.
+  if (channel.alarm_release) return "ok";
   if (
     channel.status === "read_error" ||
     channel.st === 2 ||

@@ -12,6 +12,7 @@ import { MatIconModule, MatIconRegistry } from "@angular/material/icon";
 import {
   AlarmFilter,
   AlarmLimits,
+  AlarmRelease,
   LocalAccount,
   SensorChannel,
   SensorState,
@@ -19,6 +20,7 @@ import {
   ViewKey,
   sensorReason,
   sensorState,
+  alarmReleaseExpired,
 } from "./dashboard.model";
 import { createMockChannels } from "./mock-data";
 import { AlarmTracker } from "./alert-state";
@@ -39,6 +41,9 @@ interface NavItem {
   label: string;
   icon: string;
 }
+
+const RELEASE_REASON_OTHER = "__other__";
+const RELEASE_REASON_MAX_LENGTH = 60;
 
 interface PendingLimitChange {
   useDefault: boolean;
@@ -141,10 +146,10 @@ export class AppComponent implements OnInit, OnDestroy {
     () => this.refreshData(),
     this.pollIntervalMs,
   );
-  private clockTimer = window.setInterval(
-    () => (this.clock = new Date()),
-    1000,
-  );
+  private clockTimer = window.setInterval(() => {
+    this.clock = new Date();
+    this.expireAlarmReleases();
+  }, 1000);
 
   overviewFilter: "all" | SensorState = "all";
   overviewQuery = "";
@@ -166,6 +171,29 @@ export class AppComponent implements OnInit, OnDestroy {
   private sensorLowInput?: ElementRef<HTMLInputElement>;
   modalMessage = "";
   pendingLimitChange: PendingLimitChange | null = null;
+  readonly releaseReasonOther = RELEASE_REASON_OTHER;
+  readonly releaseReasonMaxLength = RELEASE_REASON_MAX_LENGTH;
+  alarmReleases: Record<string, AlarmRelease> = {};
+  /** Release records per channel; drives the modal's download button. */
+  alarmRecordCounts: Record<string, number> = {};
+  /** Browser-preview only: release history kept in memory for export. */
+  private localReleaseHistory: Record<
+    string,
+    Array<AlarmRelease & { alarmReason: string }>
+  > = {};
+  releaseTarget: SensorChannel | null = null;
+  releaseChoice = RELEASE_REASON_OTHER;
+  releaseCustomReason = "";
+  releaseSaveAsOption = false;
+  releaseSaving = false;
+  releaseError = "";
+  newReleaseReason = "";
+  releaseReasonsSaving = false;
+  releaseReasonsMessage = "";
+  releaseReasonsFailed = false;
+  releaseReasonUsage: Record<string, number> = {};
+  renamingReleaseReason: string | null = null;
+  renameReleaseReasonText = "";
 
   alarmFilter: AlarmFilter = "all";
   channelQuery = "";
@@ -257,6 +285,8 @@ export class AppComponent implements OnInit, OnDestroy {
           }));
         this.appSettings = result.settings;
         this.channelLimits = result.channelLimits ?? {};
+        this.alarmReleases = result.alarmReleases ?? {};
+        this.alarmRecordCounts = result.alarmRecordCounts ?? {};
         this.applyDatabaseSettings();
         this.view = String(
           this.appSettings["ui.default_view"] ?? "overview",
@@ -271,6 +301,7 @@ export class AppComponent implements OnInit, OnDestroy {
         );
         this.password = "";
         await this.refreshData();
+        void this.loadReleaseReasonUsage();
         if (result.session.permissions.includes("users.manage"))
           await this.loadDatabaseUsers();
         return;
@@ -331,6 +362,10 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.session && this.db.available)
       void this.db.logout(this.session.token);
     this.session = null;
+    this.alarmReleases = {};
+    this.alarmRecordCounts = {};
+    this.localReleaseHistory = {};
+    this.releaseTarget = null;
     this.alarmSnapshotReady = false;
     this.stopAlarmSound();
     this.alarmTracker.reset();
@@ -341,7 +376,10 @@ export class AppComponent implements OnInit, OnDestroy {
     this.mobileOpen = false;
     if (view === "channels") void this.runReportQuery();
     if (view === "permissions") this.permissionMessage = "";
-    if (view === "settings") void this.checkDatabaseConnection();
+    if (view === "settings") {
+      void this.checkDatabaseConnection();
+      void this.loadReleaseReasonUsage();
+    }
   }
   toggleSidebar(): void {
     this.collapsed = !this.collapsed;
@@ -401,23 +439,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.syncError = "";
       this.alarmSnapshotReady = Boolean(this.session);
       this.syncAlarmSound();
-      if (this.session) {
-        const changed = this.alarmTracker.collect(this.channels, (channel) =>
-          this.state(channel),
-        );
-        if (changed.length) {
-          const summary = changed
-            .slice(0, 5)
-            .map(
-              (channel) =>
-                `CH${channel.id} ${this.statusLabel(this.state(channel))}`,
-            )
-            .join("、");
-          void this.emitAlarm(
-            `偵測到 ${changed.length} 點新異常：${summary}${changed.length > 5 ? "…" : ""}`,
-          );
-        }
-      }
+      this.announceNewAlarms();
     } catch (error) {
       if (sessionToken !== this.session?.token) return;
       this.syncError = error instanceof Error ? error.message : "資料同步失敗";
@@ -435,6 +457,37 @@ export class AppComponent implements OnInit, OnDestroy {
         null;
   }
 
+  private announceNewAlarms(): void {
+    if (!this.session) return;
+    const changed = this.alarmTracker.collect(this.channels, (channel) =>
+      this.state(channel),
+    );
+    if (!changed.length) return;
+    const summary = changed
+      .slice(0, 5)
+      .map(
+        (channel) => `CH${channel.id} ${this.statusLabel(this.state(channel))}`,
+      )
+      .join("、");
+    void this.emitAlarm(
+      `偵測到 ${changed.length} 點新異常：${summary}${changed.length > 5 ? "…" : ""}`,
+    );
+  }
+  /** Re-arm alarms the moment a one-minute release runs out, not at the next poll. */
+  private expireAlarmReleases(): void {
+    if (!this.session) return;
+    const expired = Object.keys(this.alarmReleases).filter((id) =>
+      alarmReleaseExpired(this.alarmReleases[id]),
+    );
+    if (!expired.length) return;
+    this.refreshLimitDisplay();
+    if (this.selectedSensor && expired.includes(this.selectedSensor.id)) {
+      this.modalMessage = "解除已滿一分鐘，數值仍超出範圍，已重新警報";
+      this.modalFailed = true;
+    }
+    this.syncAlarmSound();
+    this.announceNewAlarms();
+  }
   private applyDatabaseSettings(): void {
     this.defaultLow = this.defaultLimits.low;
     this.defaultHigh = this.defaultLimits.high;
@@ -653,15 +706,32 @@ export class AppComponent implements OnInit, OnDestroy {
     );
   }
   private refreshLimitDisplay(): void {
+    const releases = { ...this.alarmReleases };
     this.channels = this.channels.map((channel): SensorChannel => {
       const limits = this.channelLimits[channel.id] ?? this.defaultLimits;
-      return {
+      const next: SensorChannel = {
         ...channel,
         web_lo: limits.low,
         web_hi: limits.high,
         limit_source: this.channelLimits[channel.id] ? "custom" : "default",
       };
+      const abnormal =
+        sensorState({ ...next, web_alarm_ack: false, alarm_release: null }) !==
+        "ok";
+      // A release lasts one minute and only while abnormal; recovery or
+      // expiry re-arms the alarm.
+      const held = releases[channel.id];
+      if (!abnormal || (held && alarmReleaseExpired(held)))
+        delete releases[channel.id];
+      const release = abnormal ? releases[channel.id] : undefined;
+      const deviceAck = channel.web_alarm_ack && !channel.alarm_release;
+      return {
+        ...next,
+        web_alarm_ack: abnormal && (Boolean(release) || deviceAck),
+        alarm_release: release ?? null,
+      };
     });
+    this.alarmReleases = releases;
     if (this.selectedSensor)
       this.selectedSensor =
         this.channels.find(
@@ -731,6 +801,300 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   cancelLimitChange(): void {
     this.pendingLimitChange = null;
+  }
+  get releaseReasons(): string[] {
+    const value = this.appSettings["alarms.release_reasons"];
+    return Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : [];
+  }
+  get canReleaseAlarm(): boolean {
+    return Boolean(this.session?.permissions.includes("alarms.ack"));
+  }
+  get canManageReleaseReasons(): boolean {
+    return Boolean(this.session?.permissions.includes("settings.manage"));
+  }
+  openReleaseDialog(channel: SensorChannel): void {
+    if (!this.canReleaseAlarm || this.state(channel) === "ok") return;
+    this.releaseTarget = channel;
+    this.releaseChoice = this.releaseReasons[0] ?? RELEASE_REASON_OTHER;
+    this.releaseCustomReason = "";
+    this.releaseSaveAsOption = false;
+    this.releaseError = "";
+  }
+  cancelReleaseDialog(): void {
+    if (!this.releaseSaving) this.releaseTarget = null;
+  }
+  async confirmRelease(): Promise<void> {
+    const target = this.releaseTarget;
+    if (!target || !this.session || this.releaseSaving) return;
+    const custom = this.releaseChoice === RELEASE_REASON_OTHER;
+    const reason = (custom ? this.releaseCustomReason : this.releaseChoice)
+      .trim()
+      .replace(/\s+/g, " ");
+    if (!reason) {
+      this.releaseError = "請選擇或輸入解除理由";
+      return;
+    }
+    if (reason.length > RELEASE_REASON_MAX_LENGTH) {
+      this.releaseError = `解除理由不可超過 ${RELEASE_REASON_MAX_LENGTH} 個字`;
+      return;
+    }
+    const saveAsOption =
+      custom && this.releaseSaveAsOption && this.canManageReleaseReasons;
+    const token = this.session.token;
+    this.releaseSaving = true;
+    this.releaseError = "";
+    try {
+      if (this.db.available) {
+        const result = await this.db.releaseAlarm(
+          token,
+          target.id,
+          reason,
+          saveAsOption,
+        );
+        if (!result) throw new Error("未收到解除結果，請重新啟動桌面程式");
+        if (this.session?.token !== token) return;
+        this.alarmReleases = result.releases;
+        if (result.recordCounts) this.alarmRecordCounts = result.recordCounts;
+        this.appSettings = result.settings;
+        if (result.usage) this.releaseReasonUsage = result.usage;
+        this.applyDatabaseSettings();
+      } else {
+        const record = {
+          reason,
+          username: this.session.username,
+          displayName: this.session.displayName,
+          releasedAt: new Date().toISOString(),
+          alarmReason: this.reason({ ...target, alarm_release: null }) ?? "",
+        };
+        this.localReleaseHistory = {
+          ...this.localReleaseHistory,
+          [target.id]: [record, ...(this.localReleaseHistory[target.id] ?? [])],
+        };
+        this.alarmRecordCounts = {
+          ...this.alarmRecordCounts,
+          [target.id]: this.localReleaseHistory[target.id].length,
+        };
+        this.releaseReasonUsage = {
+          ...this.releaseReasonUsage,
+          [reason]: (this.releaseReasonUsage[reason] ?? 0) + 1,
+        };
+        this.alarmReleases = {
+          ...this.alarmReleases,
+          [target.id]: {
+            reason,
+            username: this.session.username,
+            displayName: this.session.displayName,
+            releasedAt: new Date().toISOString(),
+          },
+        };
+        if (saveAsOption && !this.releaseReasons.includes(reason))
+          this.appSettings["alarms.release_reasons"] = [
+            ...this.releaseReasons,
+            reason,
+          ];
+      }
+      this.refreshLimitDisplay();
+      this.alarmTracker.collect(this.channels, (channel) =>
+        this.state(channel),
+      );
+      this.syncAlarmSound();
+      this.releaseTarget = null;
+      if (this.selectedSensor?.id === target.id) {
+        this.modalMessage = `已解除警報：${reason}`;
+        this.modalFailed = false;
+      }
+    } catch (error) {
+      this.releaseError =
+        error instanceof Error ? error.message : "解除警報失敗";
+    } finally {
+      this.releaseSaving = false;
+    }
+  }
+  alarmRecordCount(channel: SensorChannel): number {
+    return this.alarmRecordCounts[channel.id] ?? 0;
+  }
+  async exportAlarmReleases(channel: SensorChannel): Promise<void> {
+    if (!this.session || !this.alarmRecordCount(channel)) return;
+    try {
+      if (this.db.available) {
+        const result = await this.db.exportAlarmReleases(
+          this.session.token,
+          channel.id,
+        );
+        if (result && !result.canceled) {
+          this.modalMessage = `已匯出 ${result.rowCount} 筆解除警報紀錄：${result.filePath}`;
+          this.modalFailed = false;
+        }
+        return;
+      }
+      const records = this.localReleaseHistory[channel.id] ?? [];
+      if (!records.length) return;
+      const cell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+      const content = [
+        ["通道", "名稱", "警報原因", "解除理由", "解除人員", "帳號", "解除時間"],
+        ...records.map((release) => [
+          `CH${channel.id}`,
+          channel.name,
+          release.alarmReason,
+          release.reason,
+          release.displayName ?? "",
+          release.username,
+          this.formatDateTime(release.releasedAt),
+        ]),
+      ]
+        .map((row) => row.map(cell).join(","))
+        .join("\r\n");
+      const url = URL.createObjectURL(
+        new Blob([`\ufeff${content}`], { type: "text/csv;charset=utf-8" }),
+      );
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `CH${channel.id}_解除警報紀錄_${new Date().toISOString().slice(0, 10)}.csv`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      this.modalMessage =
+        error instanceof Error ? error.message : "解除警報紀錄匯出失敗";
+      this.modalFailed = true;
+    }
+  }
+  async addReleaseReason(): Promise<void> {
+    const reason = this.newReleaseReason.trim().replace(/\s+/g, " ");
+    this.releaseReasonsFailed = true;
+    if (!reason) {
+      this.releaseReasonsMessage = "請輸入解除理由";
+      return;
+    }
+    if (reason.length > RELEASE_REASON_MAX_LENGTH) {
+      this.releaseReasonsMessage = `解除理由不可超過 ${RELEASE_REASON_MAX_LENGTH} 個字`;
+      return;
+    }
+    if (this.releaseReasons.includes(reason)) {
+      this.releaseReasonsMessage = "此理由已存在";
+      return;
+    }
+    if (await this.saveReleaseReasons([...this.releaseReasons, reason])) {
+      this.newReleaseReason = "";
+      this.releaseReasonsMessage = `已新增「${reason}」`;
+    }
+  }
+  releaseReasonUseCount(reason: string): number {
+    return this.releaseReasonUsage[reason] ?? 0;
+  }
+  async loadReleaseReasonUsage(): Promise<void> {
+    if (!this.session || !this.db.available) return;
+    try {
+      const usage = await this.db.releaseReasonUsage(this.session.token);
+      if (usage) this.releaseReasonUsage = usage;
+    } catch {
+      /* Usage only locks delete buttons; the database still enforces it. */
+    }
+  }
+  startRenameReleaseReason(reason: string): void {
+    this.renamingReleaseReason = reason;
+    this.renameReleaseReasonText = reason;
+    this.releaseReasonsMessage = "";
+    window.setTimeout(() =>
+      document
+        .querySelector<HTMLInputElement>(".release-reason-rename")
+        ?.select(),
+    );
+  }
+  cancelRenameReleaseReason(): void {
+    this.renamingReleaseReason = null;
+    this.renameReleaseReasonText = "";
+  }
+  async confirmRenameReleaseReason(): Promise<void> {
+    const from = this.renamingReleaseReason;
+    if (!from || !this.session || this.releaseReasonsSaving) return;
+    const to = this.renameReleaseReasonText.trim().replace(/\s+/g, " ");
+    this.releaseReasonsFailed = true;
+    if (!to) {
+      this.releaseReasonsMessage = "請輸入解除理由";
+      return;
+    }
+    if (to.length > RELEASE_REASON_MAX_LENGTH) {
+      this.releaseReasonsMessage = `解除理由不可超過 ${RELEASE_REASON_MAX_LENGTH} 個字`;
+      return;
+    }
+    if (to === from) {
+      this.cancelRenameReleaseReason();
+      return;
+    }
+    if (this.releaseReasons.includes(to)) {
+      this.releaseReasonsMessage = "此理由已存在";
+      return;
+    }
+    const token = this.session.token;
+    this.releaseReasonsSaving = true;
+    try {
+      if (this.db.available) {
+        const result = await this.db.renameReleaseReason(token, from, to);
+        if (!result) throw new Error("未收到儲存結果，請重新啟動桌面程式");
+        if (this.session?.token !== token) return;
+        this.appSettings = result.settings;
+        this.alarmReleases = result.releases;
+        if (result.usage) this.releaseReasonUsage = result.usage;
+        this.applyDatabaseSettings();
+      } else {
+        this.appSettings["alarms.release_reasons"] = this.releaseReasons.map(
+          (item) => (item === from ? to : item),
+        );
+        const { [from]: count, ...usage } = this.releaseReasonUsage;
+        this.releaseReasonUsage = count ? { ...usage, [to]: count } : usage;
+        this.alarmReleases = Object.fromEntries(
+          Object.entries(this.alarmReleases).map(([id, release]) => [
+            id,
+            release.reason === from ? { ...release, reason: to } : release,
+          ]),
+        );
+        this.refreshLimitDisplay();
+      }
+      this.cancelRenameReleaseReason();
+      this.releaseReasonsFailed = false;
+      this.releaseReasonsMessage = `已將「${from}」改名為「${to}」`;
+    } catch (error) {
+      this.releaseReasonsMessage =
+        error instanceof Error ? error.message : "改名失敗";
+    } finally {
+      this.releaseReasonsSaving = false;
+    }
+  }
+  async removeReleaseReason(reason: string): Promise<void> {
+    if (this.releaseReasonUseCount(reason)) {
+      this.releaseReasonsFailed = true;
+      this.releaseReasonsMessage = `「${reason}」已有解除紀錄，不能刪除，可改名`;
+      return;
+    }
+    if (
+      await this.saveReleaseReasons(
+        this.releaseReasons.filter((item) => item !== reason),
+      )
+    )
+      this.releaseReasonsMessage = `已刪除「${reason}」`;
+  }
+  private async saveReleaseReasons(reasons: string[]): Promise<boolean> {
+    if (this.releaseReasonsSaving) return false;
+    this.releaseReasonsSaving = true;
+    this.releaseReasonsFailed = true;
+    this.releaseReasonsMessage = "";
+    try {
+      const saved = await this.saveDatabaseSetting(
+        "alarms.release_reasons",
+        reasons,
+      );
+      if (!saved) {
+        this.releaseReasonsMessage =
+          this.settingsMessage || "解除理由儲存失敗";
+        return false;
+      }
+      this.releaseReasonsFailed = false;
+      return true;
+    } finally {
+      this.releaseReasonsSaving = false;
+    }
   }
   private async saveSensorLimits(useDefault = false): Promise<void> {
     if (!this.selectedSensor || this.limitsSaving || !this.session) return;
@@ -1138,7 +1502,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   get hasActiveSoundAlarm(): boolean {
-    // Acknowledging an alarm does not mean the physical condition recovered.
+    // A device-side acknowledgement does not mean the physical condition
+    // recovered, so it keeps sounding; a Dashboard release with a reason
+    // (alarm_release) silences that channel for one minute or until it
+    // recovers, whichever comes first.
     return Boolean(
       this.session &&
       this.alarmSnapshotReady &&
@@ -1646,6 +2013,7 @@ export class AppComponent implements OnInit, OnDestroy {
           "notifications.enabled",
           "notifications.snapshot_stale_enabled",
           "api.poll_interval_ms",
+          "alarms.release_reasons",
         ].includes(key)
       )
         return false;

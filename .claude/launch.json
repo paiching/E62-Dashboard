@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "angular-dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "Angular-Dashboard", "run", "start", "--", "--port", "4200"],
+      "port": 4200
+    }
+  ]
+}
