@@ -7,7 +7,7 @@
   "scripts": {
     "start": "ng serve --host 127.0.0.1",
     "build": "ng build --base-href ./",
-    "desktop": "electron .",
+    "desktop": "npm run build && electron .",
     "package:windows": "npm run build && electron-builder --win portable --config.electronDist=node_modules/electron/dist",
     "package:windows:dir": "npm run build && electron-builder --win --x64 --dir --config.electronDist=node_modules/electron/dist",
     "package:windows:installer": "npm run build && electron-builder --win nsis --x64 --config.electronDist=node_modules/electron/dist"
