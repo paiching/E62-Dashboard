@@ -42,6 +42,7 @@ function initializeDatabase(userDataPath, forceMockMode = false) {
     CREATE INDEX IF NOT EXISTS idx_readings_state_time ON sensor_readings(state,recorded_at DESC);
     CREATE TABLE IF NOT EXISTS alarm_releases(id INTEGER PRIMARY KEY AUTOINCREMENT,channel_id TEXT NOT NULL,alarm_reason TEXT,release_reason TEXT NOT NULL,username TEXT NOT NULL,display_name TEXT NOT NULL DEFAULT '',released_at TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,cleared_at TEXT);
     CREATE INDEX IF NOT EXISTS idx_alarm_releases_active ON alarm_releases(channel_id,active);
+    CREATE TABLE IF NOT EXISTS alarm_latches(channel_id TEXT PRIMARY KEY,alarm_reason TEXT NOT NULL,latched_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS ingest_log(id INTEGER PRIMARY KEY AUTOINCREMENT,batch_id TEXT NOT NULL UNIQUE,source TEXT NOT NULL,source_url TEXT,channel_count INTEGER NOT NULL,received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,status TEXT NOT NULL,error_message TEXT);
   `);
   const userColumns = new Set(
@@ -290,6 +291,7 @@ function login(username, password) {
     channelLimits: channelLimitsObject(),
     alarmReleases: alarmReleasesObject(),
     alarmRecordCounts: alarmRecordCounts(),
+    alarmLatches: alarmLatchesObject(),
     menus: menusForRole(user.role_id),
   };
 }
@@ -491,6 +493,19 @@ function renameReleaseReason(token, from, to) {
     usage: releaseReasonUsageObject(),
   };
 }
+// An alarm that "recovers" only because its limits were edited stays latched
+// until someone releases it with a reason.
+function alarmLatchesObject() {
+  return Object.fromEntries(
+    database
+      .prepare("SELECT channel_id,alarm_reason,latched_at FROM alarm_latches")
+      .all()
+      .map((row) => [
+        row.channel_id,
+        { reason: row.alarm_reason, latchedAt: row.latched_at },
+      ]),
+  );
+}
 function alarmRecordCounts() {
   return Object.fromEntries(
     database
@@ -530,7 +545,10 @@ function releaseAlarm(token, channelId, reason, saveAsOption = false) {
   const [channel] = applyChannelLimits([
     { ...parseJson(row.raw_json, {}), id },
   ]);
-  if (channelState(channel) === "ok")
+  const latch = database
+    .prepare("SELECT alarm_reason FROM alarm_latches WHERE channel_id=?")
+    .get(id);
+  if (channelState(channel) === "ok" && !latch)
     throw new Error("此通道目前沒有警報，無需解除");
   if (saveAsOption && !session.permissions.includes("settings.manage"))
     throw new Error("沒有系統設定權限，無法新增解除理由選項");
@@ -548,12 +566,15 @@ function releaseAlarm(token, channelId, reason, saveAsOption = false) {
       )
       .run(
         id,
-        channelReason(channel),
+        channelState(channel) === "ok"
+          ? latch.alarm_reason
+          : channelReason(channel),
         text,
         session.username,
         session.displayName ?? "",
         now,
       );
+    database.prepare("DELETE FROM alarm_latches WHERE channel_id=?").run(id);
     if (saveAsOption) {
       const current = settingsObject()["alarms.release_reasons"];
       const reasons = normalizeReleaseReasons([
@@ -574,6 +595,7 @@ function releaseAlarm(token, channelId, reason, saveAsOption = false) {
   return {
     releases: alarmReleasesObject(),
     recordCounts: alarmRecordCounts(),
+    latches: alarmLatchesObject(),
     settings: settingsObject(),
     usage: releaseReasonUsageObject(),
   };
@@ -662,7 +684,21 @@ function refreshStoredLimits() {
   const update = database.prepare(
     "UPDATE sensor_channels SET alarm_low=?,alarm_high=?,last_state=?,raw_json=?,updated_at=CURRENT_TIMESTAMP WHERE channel_id=?",
   );
-  for (const channel of applyChannelLimits(channels))
+  const latch = database.prepare(
+    "INSERT OR IGNORE INTO alarm_latches(channel_id,alarm_reason,latched_at) VALUES(?,?,?)",
+  );
+  const released = new Set(Object.keys(alarmReleasesObject()));
+  const before = new Map(channels.map((channel) => [channel.id, channel]));
+  const now = new Date().toISOString();
+  for (const channel of applyChannelLimits(channels)) {
+    const old = before.get(channel.id);
+    if (
+      old &&
+      !released.has(channel.id) &&
+      channelState(old) === "alarm" &&
+      channelState(channel) === "ok"
+    )
+      latch.run(channel.id, channelReason(old) || "警報", now);
     update.run(
       channel.web_lo,
       channel.web_hi,
@@ -670,6 +706,7 @@ function refreshStoredLimits() {
       json(channel),
       channel.id,
     );
+  }
 }
 function saveChannelLimits(token, channelId, limits) {
   requireSession(token, "settings.manage");
@@ -731,6 +768,7 @@ function hydrateChannels(channels) {
     "SELECT recorded_at AS time,pv AS value FROM sensor_readings WHERE channel_id=? AND pv IS NOT NULL ORDER BY recorded_at DESC,id DESC LIMIT 500",
   );
   const releases = alarmReleasesObject();
+  const latches = alarmLatchesObject();
   return applyChannelLimits(channels).map((channel) => {
     const id = String(channel.id ?? "").trim(),
       summary = stats.get(id),
@@ -749,6 +787,7 @@ function hydrateChannels(channels) {
         Boolean(channel.web_alarm_ack) ||
         (Boolean(releases[id]) && channelState(channel) !== "ok"),
       alarm_release: releases[id] ?? null,
+      alarm_latch: latches[id] ?? null,
     };
   });
 }
@@ -1216,6 +1255,7 @@ module.exports = {
   releaseReasonUsage,
   renameReleaseReason,
   alarmRecordCounts,
+  alarmLatchesObject,
   ALARM_RELEASE_DURATION_MS,
   alarmReleaseRows,
   exportAlarmReleases,

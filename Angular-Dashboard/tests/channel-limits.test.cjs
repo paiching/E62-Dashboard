@@ -283,6 +283,8 @@ const names = [
   "saveDefaultLimits",
   "refreshData",
   "announceNewAlarms",
+  "limitAlarmSnapshot",
+  "latchLimitRecoveries",
 ];
 const members = component.members.filter(
   (node) =>
@@ -314,6 +316,10 @@ function setup() {
   const subject = Object.assign(new Harness(), {
     channels: initial.map((c) => ({ ...c })),
     channelLimits: {},
+    alarmLatches: {},
+    alarmReleases: {},
+    state: (channel) => modelModule.exports.sensorState(channel),
+    reason: (channel) => modelModule.exports.sensorReason(channel),
     appSettings: {},
     session: { token: "admin", permissions: ["settings.manage"] },
     db: { available: true, ingestSnapshot: async () => ({}) },
@@ -445,4 +451,34 @@ test("renderer reapplies the latest saved policy over stale in-flight API result
   await pending;
   assert.equal(subject.selectedSensor.web_hi, 7);
   assert.equal(subject.selectedSensor.limit_source, "custom");
+});
+test("widening limits keeps an existing alarm until it is released", async () => {
+  const subject = setup();
+  subject.db.saveChannelLimits = async (token, id, limits) => ({
+    [id]: limits,
+  });
+  const state = () =>
+    modelModule.exports.sensorState(
+      subject.channels.find((channel) => channel.id === "001"),
+    );
+  subject.editLow = 3;
+  subject.editHigh = 4;
+  await subject.saveSensorLimits();
+  assert.equal(state(), "alarm");
+  assert.equal(subject.alarmLatches["001"], undefined);
+
+  subject.editHigh = 8;
+  await subject.saveSensorLimits();
+  assert.equal(state(), "alarm");
+  assert.match(subject.alarmLatches["001"].reason, /高於警報上限 4/);
+  assert.match(
+    modelModule.exports.sensorReason(subject.selectedSensor),
+    /需手動解除/,
+  );
+  await subject.refreshData();
+  assert.equal(state(), "alarm");
+
+  subject.alarmLatches = {};
+  subject.refreshLimitDisplay();
+  assert.equal(state(), "ok");
 });

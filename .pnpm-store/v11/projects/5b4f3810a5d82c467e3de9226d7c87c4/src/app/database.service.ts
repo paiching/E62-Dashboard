@@ -1,6 +1,7 @@
 import { Injectable } from "@angular/core";
 import {
   AlarmLimits,
+  AlarmLatch,
   AlarmRelease,
   LocalAccount,
   SensorChannel,
@@ -20,6 +21,7 @@ export interface DatabaseLogin {
   channelLimits: Record<string, AlarmLimits>;
   alarmReleases?: Record<string, AlarmRelease>;
   alarmRecordCounts?: Record<string, number>;
+  alarmLatches?: Record<string, AlarmLatch>;
   menus: DatabaseMenu[];
 }
 export interface ReportFilter {
@@ -71,6 +73,7 @@ export interface AccountRole {
 export interface AlarmReleaseResult {
   releases: Record<string, AlarmRelease>;
   recordCounts?: Record<string, number>;
+  latches?: Record<string, AlarmLatch>;
   settings: Record<string, unknown>;
   usage?: Record<string, number>;
 }

@@ -23,6 +23,11 @@ export interface AlarmRelease {
   displayName?: string;
   releasedAt: string;
 }
+/** An alarm cleared only by editing limits; it stays until released. */
+export interface AlarmLatch {
+  reason: string;
+  latchedAt: string;
+}
 /** A release silences a channel for one minute, then the alarm re-arms. */
 export const ALARM_RELEASE_DURATION_MS = 60_000;
 export function alarmReleaseExpired(
@@ -52,6 +57,7 @@ export interface SensorChannel {
   web_alarm_ack: boolean;
   alarm_reason?: string | null;
   alarm_release?: AlarmRelease | null;
+  alarm_latch?: AlarmLatch | null;
 }
 
 export interface UserSession {
@@ -84,6 +90,7 @@ export function sensorState(channel: SensorChannel): SensorState {
     channel.pv === null
   )
     return "error";
+  if (channel.alarm_latch) return "alarm";
   if (channel.web_alarm_ack) return "ok";
   if (
     channel.st === 3 ||
@@ -114,5 +121,7 @@ export function sensorReason(channel: SensorChannel): string | null {
   )
     reasons.push(`高於警報上限 ${channel.web_hi} °C`);
   if (channel.web_alarm) reasons.push("設備警報");
+  if (!reasons.length && channel.alarm_latch)
+    reasons.push(`${channel.alarm_latch.reason}（範圍已調整，需手動解除）`);
   return channel.alarm_reason || reasons.join("、") || null;
 }

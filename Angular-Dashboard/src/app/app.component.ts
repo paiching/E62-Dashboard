@@ -12,6 +12,7 @@ import { MatIconModule, MatIconRegistry } from "@angular/material/icon";
 import {
   AlarmFilter,
   AlarmLimits,
+  AlarmLatch,
   AlarmRelease,
   LocalAccount,
   SensorChannel,
@@ -174,6 +175,8 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly releaseReasonOther = RELEASE_REASON_OTHER;
   readonly releaseReasonMaxLength = RELEASE_REASON_MAX_LENGTH;
   alarmReleases: Record<string, AlarmRelease> = {};
+  /** Alarms cleared only by a limit edit; they stay until released. */
+  alarmLatches: Record<string, AlarmLatch> = {};
   /** Release records per channel; drives the modal's download button. */
   alarmRecordCounts: Record<string, number> = {};
   /** Browser-preview only: release history kept in memory for export. */
@@ -287,6 +290,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.channelLimits = result.channelLimits ?? {};
         this.alarmReleases = result.alarmReleases ?? {};
         this.alarmRecordCounts = result.alarmRecordCounts ?? {};
+        this.alarmLatches = result.alarmLatches ?? {};
         this.applyDatabaseSettings();
         this.view = String(
           this.appSettings["ui.default_view"] ?? "overview",
@@ -364,6 +368,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.session = null;
     this.alarmReleases = {};
     this.alarmRecordCounts = {};
+    this.alarmLatches = {};
     this.localReleaseHistory = {};
     this.releaseTarget = null;
     this.alarmSnapshotReady = false;
@@ -715,9 +720,14 @@ export class AppComponent implements OnInit, OnDestroy {
         web_hi: limits.high,
         limit_source: this.channelLimits[channel.id] ? "custom" : "default",
       };
+      const latch = this.alarmLatches[channel.id] ?? null;
       const abnormal =
-        sensorState({ ...next, web_alarm_ack: false, alarm_release: null }) !==
-        "ok";
+        sensorState({
+          ...next,
+          web_alarm_ack: false,
+          alarm_release: null,
+          alarm_latch: latch,
+        }) !== "ok";
       // A release lasts one minute and only while abnormal; recovery or
       // expiry re-arms the alarm.
       const held = releases[channel.id];
@@ -729,6 +739,7 @@ export class AppComponent implements OnInit, OnDestroy {
         ...next,
         web_alarm_ack: abnormal && (Boolean(release) || deviceAck),
         alarm_release: release ?? null,
+        alarm_latch: release ? null : latch,
       };
     });
     this.alarmReleases = releases;
@@ -737,6 +748,33 @@ export class AppComponent implements OnInit, OnDestroy {
         this.channels.find(
           (channel) => channel.id === this.selectedSensor?.id,
         ) ?? this.selectedSensor;
+  }
+  /** Channels in alarm (not released) right before a limit change. */
+  private limitAlarmSnapshot(): Map<string, string> {
+    return new Map(
+      this.channels
+        .filter(
+          (channel) =>
+            !channel.alarm_release && this.state(channel) === "alarm",
+        )
+        .map((channel) => [channel.id, this.reason(channel) ?? "警報"]),
+    );
+  }
+  /** Editing limits never clears an alarm by itself; it must be released. */
+  private latchLimitRecoveries(before: Map<string, string>): void {
+    const latchedAt = new Date().toISOString();
+    let changed = false;
+    for (const channel of this.channels) {
+      const reason = before.get(channel.id);
+      if (!reason || this.alarmLatches[channel.id]) continue;
+      if (sensorState({ ...channel, web_alarm_ack: false }) !== "ok") continue;
+      this.alarmLatches = {
+        ...this.alarmLatches,
+        [channel.id]: { reason, latchedAt },
+      };
+      changed = true;
+    }
+    if (changed) this.refreshLimitDisplay();
   }
   private notifyLimitAlarms(): void {
     this.syncAlarmSound();
@@ -857,6 +895,8 @@ export class AppComponent implements OnInit, OnDestroy {
         if (this.session?.token !== token) return;
         this.alarmReleases = result.releases;
         if (result.recordCounts) this.alarmRecordCounts = result.recordCounts;
+        if (result.latches) this.alarmLatches = result.latches;
+        else delete this.alarmLatches[target.id];
         this.appSettings = result.settings;
         if (result.usage) this.releaseReasonUsage = result.usage;
         this.applyDatabaseSettings();
@@ -868,6 +908,9 @@ export class AppComponent implements OnInit, OnDestroy {
           releasedAt: new Date().toISOString(),
           alarmReason: this.reason({ ...target, alarm_release: null }) ?? "",
         };
+        const latches = { ...this.alarmLatches };
+        delete latches[target.id];
+        this.alarmLatches = latches;
         this.localReleaseHistory = {
           ...this.localReleaseHistory,
           [target.id]: [record, ...(this.localReleaseHistory[target.id] ?? [])],
@@ -1109,8 +1152,10 @@ export class AppComponent implements OnInit, OnDestroy {
       const saved = await this.db.saveChannelLimits(token, id, limits);
       if (!saved) throw new Error("未收到儲存結果，請重新啟動桌面程式");
       if (this.session?.token !== token) return;
+      const before = this.limitAlarmSnapshot();
       this.channelLimits = saved;
       this.refreshLimitDisplay();
+      this.latchLimitRecoveries(before);
       if (this.selectedSensor?.id === id) {
         const effective = saved[id] ?? this.defaultLimits;
         this.editLow = effective.low;
@@ -1156,8 +1201,10 @@ export class AppComponent implements OnInit, OnDestroy {
       );
       if (!settings) throw new Error("未收到儲存結果，請重新啟動桌面程式");
       if (this.session?.token !== token) return;
+      const before = this.limitAlarmSnapshot();
       this.appSettings = settings;
       this.applyDatabaseSettings();
+      this.latchLimitRecoveries(before);
       this.defaultLimitsMessage = "預設上下限已儲存，未個別設定的通道已套用";
       this.defaultLimitsFailed = false;
       this.notifyLimitAlarms();

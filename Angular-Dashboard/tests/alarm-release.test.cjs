@@ -165,3 +165,31 @@ test("record counts are per sensor and returned on login and release", () => {
   const result = db.releaseAlarm(session.token, "002", "計數測試");
   assert.equal(result.recordCounts["002"], before + 1);
 });
+
+test("editing limits keeps an alarm latched until it is released", () => {
+  const { session } = db.login("admin", "SGS@1234");
+  db.saveChannelLimits(session.token, "002", null);
+  db.ingestSnapshotAuthorized(session.token, snapshot(4)); // clears releases
+  db.ingestSnapshotAuthorized(session.token, snapshot(-24.7));
+  assert.equal(db.alarmLatchesObject()["002"], undefined);
+
+  db.saveChannelLimits(session.token, "002", { low: -30, high: 8.5 });
+  const latch = db.alarmLatchesObject()["002"];
+  assert.match(latch.reason, /低於警報下限/);
+  // New readings inside the new range do not clear the latch.
+  db.ingestSnapshotAuthorized(session.token, snapshot(-24.7));
+  assert.ok(db.latestSnapshot(session.token)[0].alarm_latch);
+  assert.ok(db.login("admin", "SGS@1234").alarmLatches["002"]);
+
+  const result = db.releaseAlarm(session.token, "002", "調整範圍");
+  assert.equal(result.latches["002"], undefined);
+  assert.match(db.alarmReleaseRows("002")[0].alarm_reason, /低於警報下限/);
+  assert.throws(
+    () => db.releaseAlarm(session.token, "002", "再次"),
+    /沒有警報/,
+  );
+  // Editing limits of a channel that is not alarming never latches.
+  db.saveChannelLimits(session.token, "002", { low: -31, high: 8.5 });
+  assert.equal(db.alarmLatchesObject()["002"], undefined);
+  db.saveChannelLimits(session.token, "002", null);
+});
