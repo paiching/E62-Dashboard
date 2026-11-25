@@ -425,25 +425,29 @@
               </button>
             </div>
             <div class="trend-chart-scroll">
-              <svg class="trend-chart" viewBox="0 0 1000 430">
+              <svg
+                class="trend-chart"
+                *ngIf="trendPlot as plot"
+                [attr.viewBox]="'0 0 1000 ' + plot.height"
+              >
                 <rect
                   class="trend-plot-background"
-                  x="68"
+                  [attr.x]="plot.left"
                   y="22"
-                  width="904"
+                  [attr.width]="plot.right - plot.left"
                   height="360"
                 ></rect>
                 <g *ngFor="let tick of trendYTicks">
                   <line
-                    x1="68"
-                    x2="972"
+                    [attr.x1]="plot.left"
+                    [attr.x2]="plot.right"
                     [attr.y1]="tick.y"
                     [attr.y2]="tick.y"
                   ></line>
                   <text
                     class="trend-tick-label"
-                    x="59"
-                    [attr.y]="tick.y + 4"
+                    [attr.x]="plot.left - 9"
+                    [attr.y]="tick.y + 4 * plot.scale"
                     text-anchor="end"
                   >
                     {{ tick.value | number: "1.1-1" }}
@@ -459,7 +463,7 @@
                   <text
                     class="trend-tick-label"
                     [attr.x]="tick.x"
-                    y="401"
+                    [attr.y]="382 + 19 * plot.scale"
                     text-anchor="middle"
                   >
                     {{ tick.label }}
@@ -496,15 +500,17 @@
                 </g>
                 <text
                   class="trend-axis-title"
-                  x="520"
-                  y="425"
+                  [attr.x]="(plot.left + plot.right) / 2"
+                  [attr.y]="382 + 43 * plot.scale"
                   text-anchor="middle"
                 >
                   時間
                 </text>
                 <text
                   class="trend-axis-title"
-                  transform="translate(17 202) rotate(-90)"
+                  [attr.transform]="
+                    'translate(' + (4 + 13 * plot.scale) + ' 202) rotate(-90)'
+                  "
                   text-anchor="middle"
                 >
                   溫度 (°C)
@@ -1202,6 +1208,49 @@
                 role="status"
               >
                 {{ releaseReasonsMessage }}
+              </p>
+            </div>
+          </article>
+          <article
+            class="panel info-card font-size-card"
+            [attr.aria-busy]="fontSizeSaving"
+          >
+            <span><mat-icon>edit</mat-icon></span>
+            <div>
+              <h3>字級設定</h3>
+              <p>各區域可分開調整，選擇後立即套用並儲存。</p>
+              <div class="font-size-fields">
+                <label *ngFor="let area of fontSizeAreas"
+                  >{{ area.label
+                  }}<select
+                    [ngModel]="fontSizes[area.key]"
+                    (ngModelChange)="setFontSize(area.key, $event)"
+                    [disabled]="fontSizeSaving"
+                  >
+                    <option
+                      *ngFor="let level of area.levels"
+                      [ngValue]="level.percent"
+                    >
+                      {{ level.label }}
+                    </option>
+                  </select></label
+                >
+              </div>
+              <button
+                type="button"
+                class="secondary-button"
+                (click)="resetFontSizes()"
+                [disabled]="fontSizeSaving || fontSizesAreDefault"
+              >
+                全部恢復標準
+              </button>
+              <p
+                class="font-size-message"
+                [class.form-error]="fontSizeFailed"
+                *ngIf="fontSizeMessage"
+                role="status"
+              >
+                {{ fontSizeMessage }}
               </p>
             </div>
           </article>

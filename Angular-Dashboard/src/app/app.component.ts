@@ -33,6 +33,14 @@ import {
   ReportRow,
 } from "./database.service";
 import {
+  DEFAULT_FONT_SIZES,
+  FONT_SIZE_AREAS,
+  FontSizeArea,
+  FontSizes,
+  applyFontSizes,
+  parseFontSizes,
+} from "./font-size";
+import {
   MaterialSvgIconDirective,
   registerDashboardMaterialIcons,
 } from "./material-icons";
@@ -122,6 +130,11 @@ export class AppComponent implements OnInit, OnDestroy {
   mobileOpen = false;
   showDashboardStatus =
     localStorage.getItem("edge-angular-show-status") !== "0";
+  readonly fontSizeAreas = FONT_SIZE_AREAS;
+  fontSizes: FontSizes = { ...DEFAULT_FONT_SIZES };
+  fontSizeSaving = false;
+  fontSizeMessage = "";
+  fontSizeFailed = false;
   clock = new Date();
   channels = createMockChannels();
   lastUpdated = new Date();
@@ -517,6 +530,8 @@ export class AppComponent implements OnInit, OnDestroy {
       this.appSettings["notifications.enabled"] !== false;
     this.showDashboardStatus =
       this.appSettings["dashboard.show_status"] !== false;
+    this.fontSizes = parseFontSizes(this.appSettings["ui.font_sizes"]);
+    applyFontSizes(this.fontSizes);
     window.clearInterval(this.dataTimer);
     this.dataTimer = window.setInterval(
       () => void this.refreshData(),
@@ -1462,6 +1477,21 @@ export class AppComponent implements OnInit, OnDestroy {
       })
       .join(" ");
   }
+  /** Plot area in viewBox units; margins grow with the chart font size. */
+  get trendPlot(): {
+    scale: number;
+    left: number;
+    right: number;
+    height: number;
+  } {
+    const scale = this.fontSizes.trends / 100;
+    return {
+      scale,
+      left: 20 + 48 * scale,
+      right: 1000 - 28 * scale,
+      height: 382 + 48 * scale,
+    };
+  }
   get trendBounds(): {
     minValue: number;
     maxValue: number;
@@ -1498,11 +1528,12 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   get trendXTicks(): Array<{ x: number; label: string }> {
     const bounds = this.trendBounds;
+    const { left, right } = this.trendPlot;
     return Array.from({ length: 6 }, (_, index) => {
       const time =
         bounds.minTime + index * ((bounds.maxTime - bounds.minTime) / 5);
       return {
-        x: 68 + index * (904 / 5),
+        x: left + index * ((right - left) / 5),
         label: this.formatTime(new Date(time)),
       };
     });
@@ -1512,18 +1543,19 @@ export class AppComponent implements OnInit, OnDestroy {
     value: number,
     bounds = this.trendBounds,
   ): { x: number; y: number } {
+    const { left, right } = this.trendPlot;
     const timestamp = Date.parse(time);
     const x =
-      68 +
+      left +
       (((Number.isFinite(timestamp) ? timestamp : bounds.maxTime) -
         bounds.minTime) /
         (bounds.maxTime - bounds.minTime)) *
-        904;
+        (right - left);
     const y =
       22 +
       ((bounds.maxValue - value) / (bounds.maxValue - bounds.minValue)) * 360;
     return {
-      x: Math.max(68, Math.min(972, x)),
+      x: Math.max(left, Math.min(right, x)),
       y: Math.max(22, Math.min(382, y)),
     };
   }
@@ -2050,6 +2082,36 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  get fontSizesAreDefault(): boolean {
+    return FONT_SIZE_AREAS.every(
+      ({ key }) => this.fontSizes[key] === DEFAULT_FONT_SIZES[key],
+    );
+  }
+  setFontSize(area: FontSizeArea, percent: number): Promise<void> {
+    return this.saveFontSizes({ ...this.fontSizes, [area]: percent });
+  }
+  resetFontSizes(): Promise<void> {
+    return this.saveFontSizes({ ...DEFAULT_FONT_SIZES });
+  }
+  private async saveFontSizes(sizes: FontSizes): Promise<void> {
+    if (this.fontSizeSaving) return;
+    const previous = this.fontSizes;
+    this.fontSizes = sizes;
+    applyFontSizes(sizes);
+    this.fontSizeSaving = true;
+    this.fontSizeMessage = "";
+    this.fontSizeFailed = !(await this.saveDatabaseSetting(
+      "ui.font_sizes",
+      sizes,
+    ));
+    this.fontSizeSaving = false;
+    if (this.fontSizeFailed) {
+      this.fontSizes = previous;
+      applyFontSizes(previous);
+    }
+    this.fontSizeMessage = this.settingsMessage || "字級儲存失敗";
+  }
+
   async saveDatabaseSetting(key: string, value: unknown): Promise<boolean> {
     if (!this.session) return false;
     if (!this.db.available) {
@@ -2061,6 +2123,7 @@ export class AppComponent implements OnInit, OnDestroy {
           "notifications.snapshot_stale_enabled",
           "api.poll_interval_ms",
           "alarms.release_reasons",
+          "ui.font_sizes",
         ].includes(key)
       )
         return false;

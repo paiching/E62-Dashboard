@@ -79,6 +79,12 @@ function seedDatabase() {
     ["report.retention_days", 365, "report", "歷史資料保留天數"],
     ["dashboard.show_status", true, "display", "顯示 Header 狀態列"],
     ["ui.default_view", "overview", "display", "登入後預設頁面"],
+    [
+      "ui.font_sizes",
+      { general: 100, topbar: 100, cards: 100, trends: 100 },
+      "display",
+      "各區域字級百分比",
+    ],
     ["notifications.enabled", true, "notification", "允許桌面通知"],
     [
       "notifications.snapshot_stale_enabled",
@@ -407,6 +413,7 @@ function saveSetting(token, key, value) {
     (!Number.isInteger(value) || value < 1 || value > 300)
   )
     throw new Error("警報聲間隔需為 1～300 的整數秒");
+  if (key === "ui.font_sizes") value = normalizeFontSizes(value);
   if (
     !database.prepare("SELECT 1 AS ok FROM app_settings WHERE key=?").get(key)
   )
@@ -417,6 +424,18 @@ function saveSetting(token, key, value) {
     )
     .run(json(value), key);
   return settingsObject();
+}
+// Keep in sync with FONT_SIZE_AREAS in src/app/font-size.ts.
+const FONT_SIZE_LIMITS = { general: 150, topbar: 200, cards: 200, trends: 150 };
+function normalizeFontSizes(value) {
+  const result = {};
+  for (const [area, max] of Object.entries(FONT_SIZE_LIMITS)) {
+    const percent = value?.[area];
+    if (!Number.isInteger(percent) || percent < 100 || percent > max)
+      throw new Error(`字級需為 100～${max} 的整數百分比`);
+    result[area] = percent;
+  }
+  return result;
 }
 const RELEASE_REASON_MAX_LENGTH = 60;
 const RELEASE_REASON_MAX_COUNT = 50;

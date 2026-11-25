@@ -14,4 +14,29 @@
   --amber: #c77d10;
   --red: #c43d4e;
   --shadow: 0 8px 24px rgba(17, 36, 61, 0.08);
+  /* Font scale per area; written from 系統設定 > 字級設定. */
+  --font-scale-general: 1;
+  --font-scale-topbar: 1;
+  --font-scale-cards: 1;
+  --font-scale-trends: 1;
+  --font-scale: var(--font-scale-general);
+  --sidebar-width: calc(238px + (var(--font-scale-general) - 1) * 100px);
+}
+body {
+  font-size: calc(16px * var(--font-scale));
+}
+.topbar {
+  --font-scale: var(--font-scale-topbar);
+  font-size: calc(16px * var(--font-scale));
+}
+.summary-grid,
+.sensor-toolbar,
+.sensor-display-stage {
+  --font-scale: var(--font-scale-cards);
+  font-size: calc(16px * var(--font-scale));
+}
+.trend-toolbar,
+.trend-workspace {
+  --font-scale: var(--font-scale-trends);
+  font-size: calc(16px * var(--font-scale));
 }
