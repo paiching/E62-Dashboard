@@ -102,6 +102,17 @@ export function sensorState(channel: SensorChannel): SensorState {
   return "ok";
 }
 
+/** Outside the saved limits. A faulty sensor has no value to compare. */
+export function outsideLimits(channel: SensorChannel): boolean {
+  if (
+    channel.status === "read_error" ||
+    channel.st === 2 ||
+    channel.pv === null
+  )
+    return false;
+  return channel.pv < channel.web_lo || channel.pv > channel.web_hi;
+}
+
 export function sensorReason(channel: SensorChannel): string | null {
   const reasons: string[] = [];
   if (channel.status === "read_error") reasons.push("PV／SV 讀取失敗");

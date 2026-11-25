@@ -723,3 +723,38 @@ button {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.release-blocked-body {
+  padding: 0 20px 20px;
+}
+.release-blocked-body dl {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0;
+}
+.release-blocked-body dl > div {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: center;
+}
+.release-blocked-body dt {
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+}
+.release-blocked-body dd {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: calc(17px * var(--font-scale));
+  font-weight: 800;
+  white-space: nowrap;
+}
+.release-blocked-body dd.is-out {
+  color: var(--red);
+}
+.limit-change-dialog .release-blocked-body > p {
+  margin: 14px 0 0;
+  color: var(--ink);
+  font-size: calc(14px * var(--font-scale));
+  text-align: center;
+}

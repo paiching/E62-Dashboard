@@ -22,6 +22,7 @@ import {
   sensorReason,
   sensorState,
   alarmReleaseExpired,
+  outsideLimits,
 } from "./dashboard.model";
 import { createMockChannels } from "./mock-data";
 import { AlarmTracker } from "./alert-state";
@@ -198,6 +199,8 @@ export class AppComponent implements OnInit, OnDestroy {
     Array<AlarmRelease & { alarmReason: string }>
   > = {};
   releaseTarget: SensorChannel | null = null;
+  /** Release refused: the reading is still outside the saved limits. */
+  releaseBlocked: SensorChannel | null = null;
   releaseChoice = RELEASE_REASON_OTHER;
   releaseCustomReason = "";
   releaseSaveAsOption = false;
@@ -384,6 +387,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.alarmLatches = {};
     this.localReleaseHistory = {};
     this.releaseTarget = null;
+    this.releaseBlocked = null;
     this.alarmSnapshotReady = false;
     this.stopAlarmSound();
     this.alarmTracker.reset();
@@ -500,7 +504,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!expired.length) return;
     this.refreshLimitDisplay();
     if (this.selectedSensor && expired.includes(this.selectedSensor.id)) {
-      this.modalMessage = "解除已滿一分鐘，數值仍超出範圍，已重新警報";
+      this.modalMessage = "解除已滿一分鐘，警報原因仍存在，已重新警報";
       this.modalFailed = true;
     }
     this.syncAlarmSound();
@@ -743,12 +747,16 @@ export class AppComponent implements OnInit, OnDestroy {
           alarm_release: null,
           alarm_latch: latch,
         }) !== "ok";
-      // A release lasts one minute and only while abnormal; recovery or
-      // expiry re-arms the alarm.
+      // A release lasts one minute and only while abnormal; recovery, expiry
+      // or a reading outside the limits re-arms the alarm.
       const held = releases[channel.id];
-      if (!abnormal || (held && alarmReleaseExpired(held)))
+      if (
+        !abnormal ||
+        outsideLimits(next) ||
+        (held && alarmReleaseExpired(held))
+      )
         delete releases[channel.id];
-      const release = abnormal ? releases[channel.id] : undefined;
+      const release = releases[channel.id];
       const deviceAck = channel.web_alarm_ack && !channel.alarm_release;
       return {
         ...next,
@@ -758,6 +766,11 @@ export class AppComponent implements OnInit, OnDestroy {
       };
     });
     this.alarmReleases = releases;
+    if (this.releaseBlocked) {
+      const id = this.releaseBlocked.id;
+      const current = this.channels.find((channel) => channel.id === id);
+      this.releaseBlocked = current && outsideLimits(current) ? current : null;
+    }
     if (this.selectedSensor)
       this.selectedSensor =
         this.channels.find(
@@ -776,9 +789,11 @@ export class AppComponent implements OnInit, OnDestroy {
     );
   }
   /** Editing limits never clears an alarm by itself; it must be released. */
-  private latchLimitRecoveries(before: Map<string, string>): void {
+  private async latchLimitRecoveries(
+    before: Map<string, string>,
+  ): Promise<void> {
     const latchedAt = new Date().toISOString();
-    let changed = false;
+    const added: Record<string, string> = {};
     for (const channel of this.channels) {
       const reason = before.get(channel.id);
       if (!reason || this.alarmLatches[channel.id]) continue;
@@ -787,9 +802,15 @@ export class AppComponent implements OnInit, OnDestroy {
         ...this.alarmLatches,
         [channel.id]: { reason, latchedAt },
       };
-      changed = true;
+      added[channel.id] = reason;
     }
-    if (changed) this.refreshLimitDisplay();
+    const token = this.session?.token;
+    if (!token || !Object.keys(added).length) return;
+    this.refreshLimitDisplay();
+    const saved = await this.db.saveAlarmLatches(token, added);
+    if (!saved || this.session?.token !== token) return;
+    this.alarmLatches = saved;
+    this.refreshLimitDisplay();
   }
   private notifyLimitAlarms(): void {
     this.syncAlarmSound();
@@ -840,7 +861,7 @@ export class AppComponent implements OnInit, OnDestroy {
         message:
           nextState === "alarm"
             ? "此範圍會讓目前讀值進入警報，是否儲存？"
-            : "此範圍會讓目前讀值恢復正常，是否儲存並解除警報？",
+            : "此範圍會讓目前讀值回到範圍內，但警報仍會保留；儲存後請按「解除警報」並填寫理由。是否儲存？",
       };
       this.modalFailed = false;
       return;
@@ -869,11 +890,24 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   openReleaseDialog(channel: SensorChannel): void {
     if (!this.canReleaseAlarm || this.state(channel) === "ok") return;
+    if (outsideLimits(channel)) {
+      this.releaseBlocked = channel;
+      return;
+    }
     this.releaseTarget = channel;
     this.releaseChoice = this.releaseReasons[0] ?? RELEASE_REASON_OTHER;
     this.releaseCustomReason = "";
     this.releaseSaveAsOption = false;
     this.releaseError = "";
+  }
+  closeReleaseBlocked(): void {
+    this.releaseBlocked = null;
+    if (!this.canManageLimits) return;
+    window.setTimeout(() =>
+      document
+        .querySelector<HTMLInputElement>(".sensor-modal .limit-inputs input")
+        ?.select(),
+    );
   }
   cancelReleaseDialog(): void {
     if (!this.releaseSaving) this.releaseTarget = null;
@@ -896,6 +930,14 @@ export class AppComponent implements OnInit, OnDestroy {
     const saveAsOption =
       custom && this.releaseSaveAsOption && this.canManageReleaseReasons;
     const token = this.session.token;
+    // A poll may have moved the reading while the dialog was open.
+    const current =
+      this.channels.find((channel) => channel.id === target.id) ?? target;
+    if (outsideLimits(current)) {
+      this.releaseTarget = null;
+      this.releaseBlocked = current;
+      return;
+    }
     this.releaseSaving = true;
     this.releaseError = "";
     try {
@@ -964,8 +1006,12 @@ export class AppComponent implements OnInit, OnDestroy {
         this.modalFailed = false;
       }
     } catch (error) {
-      this.releaseError =
-        error instanceof Error ? error.message : "解除警報失敗";
+      const message = error instanceof Error ? error.message : "解除警報失敗";
+      if (message.includes("數值仍超出警報範圍")) {
+        this.releaseTarget = null;
+        this.releaseBlocked = current;
+      }
+      this.releaseError = message;
     } finally {
       this.releaseSaving = false;
     }
@@ -1170,7 +1216,8 @@ export class AppComponent implements OnInit, OnDestroy {
       const before = this.limitAlarmSnapshot();
       this.channelLimits = saved;
       this.refreshLimitDisplay();
-      this.latchLimitRecoveries(before);
+      await this.latchLimitRecoveries(before);
+      if (this.session?.token !== token) return;
       if (this.selectedSensor?.id === id) {
         const effective = saved[id] ?? this.defaultLimits;
         this.editLow = effective.low;
@@ -1219,7 +1266,8 @@ export class AppComponent implements OnInit, OnDestroy {
       const before = this.limitAlarmSnapshot();
       this.appSettings = settings;
       this.applyDatabaseSettings();
-      this.latchLimitRecoveries(before);
+      await this.latchLimitRecoveries(before);
+      if (this.session?.token !== token) return;
       this.defaultLimitsMessage = "預設上下限已儲存，未個別設定的通道已套用";
       this.defaultLimitsFailed = false;
       this.notifyLimitAlarms();

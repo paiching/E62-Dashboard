@@ -525,6 +525,18 @@ function alarmLatchesObject() {
       ]),
   );
 }
+// The screen may show a newer reading than the stored one (manual refresh does
+// not persist), so it reports the alarms it kept after a limit change.
+function saveAlarmLatches(token, latches) {
+  requireSession(token, "settings.manage");
+  const insert = database.prepare(
+    "INSERT OR IGNORE INTO alarm_latches(channel_id,alarm_reason,latched_at) SELECT channel_id,?,? FROM sensor_channels WHERE channel_id=?",
+  );
+  const now = new Date().toISOString();
+  for (const [id, reason] of Object.entries(latches ?? {}))
+    insert.run(String(reason || "警報").slice(0, 200), now, id);
+  return alarmLatchesObject();
+}
 function alarmRecordCounts() {
   return Object.fromEntries(
     database
@@ -569,6 +581,10 @@ function releaseAlarm(token, channelId, reason, saveAsOption = false) {
     .get(id);
   if (channelState(channel) === "ok" && !latch)
     throw new Error("此通道目前沒有警報，無需解除");
+  if (outsideLimits(channel))
+    throw new Error(
+      "數值仍超出警報範圍，請先調整上下限並儲存個別設定，才能解除警報",
+    );
   if (saveAsOption && !session.permissions.includes("settings.manage"))
     throw new Error("沒有系統設定權限，無法新增解除理由選項");
   database.exec("BEGIN IMMEDIATE");
@@ -581,7 +597,7 @@ function releaseAlarm(token, channelId, reason, saveAsOption = false) {
       .run(now, id);
     database
       .prepare(
-        "INSERT INTO alarm_releases(channel_id,alarm_reason,release_reason,username,display_name,released_at) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO alarm_releases(channel_id,alarm_reason,release_reason,username,display_name,released_at,active,cleared_at) VALUES(?,?,?,?,?,?,?,?)",
       )
       .run(
         id,
@@ -592,6 +608,10 @@ function releaseAlarm(token, channelId, reason, saveAsOption = false) {
         session.username,
         session.displayName ?? "",
         now,
+        // A latched channel is already back in range, so nothing is left to
+        // silence: the next out-of-range reading must alarm at once.
+        channelState(channel) === "ok" ? 0 : 1,
+        channelState(channel) === "ok" ? now : null,
       );
     database.prepare("DELETE FROM alarm_latches WHERE channel_id=?").run(id);
     if (saveAsOption) {
@@ -645,6 +665,16 @@ function channelState(channel) {
     (Number.isFinite(high) && pv > high)
     ? "alarm"
     : "ok";
+}
+// A faulty sensor (error state) has no trustworthy value to compare.
+function outsideLimits(channel) {
+  if (channelState(channel) === "error") return false;
+  const pv = Number(channel.pv),
+    low = Number(channel.web_lo),
+    high = Number(channel.web_hi);
+  return (
+    (Number.isFinite(low) && pv < low) || (Number.isFinite(high) && pv > high)
+  );
 }
 function channelReason(channel) {
   const reasons = [];
@@ -846,8 +876,10 @@ function ingestSnapshot(snapshot, source = "api", sourceUrl = null) {
         low = channel.web_lo == null ? null : Number(channel.web_lo),
         high = channel.web_hi == null ? null : Number(channel.web_hi);
       const normalized = { ...channel, id, time: rowTime };
-      // A release only covers the current abnormal episode; recovery re-arms it.
-      if (state === "ok") clearRelease.run(rowTime, id);
+      // A release only covers the current abnormal episode; recovery re-arms
+      // it, and it never covers a reading outside the limits.
+      if (state === "ok" || outsideLimits(channel))
+        clearRelease.run(rowTime, id);
       upsert.run(
         id,
         String(channel.name ?? `CH${id}`),
@@ -1275,6 +1307,7 @@ module.exports = {
   renameReleaseReason,
   alarmRecordCounts,
   alarmLatchesObject,
+  saveAlarmLatches,
   ALARM_RELEASE_DURATION_MS,
   alarmReleaseRows,
   exportAlarmReleases,

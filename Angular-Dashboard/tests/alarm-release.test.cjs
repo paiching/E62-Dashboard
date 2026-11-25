@@ -7,10 +7,11 @@ const db = require("../electron/database.cjs");
 
 db.initializeDatabase(mkdtempSync(path.join(tmpdir(), "c62-release-")), true);
 
-function snapshot(pv) {
+// st 3 (five identical readings) alarms while the value is inside the limits.
+function snapshot(pv, st = 0) {
   return {
     time: new Date().toISOString(),
-    channels: [{ id: "002", name: "A1-R01-2", pv, sv: 4, st: 0 }],
+    channels: [{ id: "002", name: "A1-R01-2", pv, sv: 4, st }],
   };
 }
 
@@ -35,7 +36,7 @@ test("release reasons are validated, trimmed and de-duplicated", () => {
 
 test("releasing an alarm lasts until the channel recovers", () => {
   const { session } = db.login("admin", "SGS@1234");
-  db.ingestSnapshotAuthorized(session.token, snapshot(-24.7));
+  db.ingestSnapshotAuthorized(session.token, snapshot(4, 3));
   const result = db.releaseAlarm(session.token, "002", "盤點中", true);
   assert.equal(result.releases["002"].reason, "盤點中");
   assert.ok(result.settings["alarms.release_reasons"].includes("盤點中"));
@@ -118,7 +119,7 @@ test("used reasons cannot be deleted but can be renamed with their history", () 
 test("guests cannot release alarms and operators cannot add reason options", () => {
   const guest = db.login("guest", "").session;
   const operator = db.login("operator1", "1234").session;
-  db.ingestSnapshotAuthorized(operator.token, snapshot(-24.7));
+  db.ingestSnapshotAuthorized(operator.token, snapshot(4, 3));
   assert.throws(() => db.releaseAlarm(guest.token, "002", "x"), /權限不足/);
   assert.throws(
     () => db.releaseAlarm(operator.token, "002", "新理由", true),
@@ -135,14 +136,14 @@ test("a release expires after one minute and the alarm fires again", () => {
   mock.timers.enable({ apis: ["Date"], now: start });
   try {
     const { session } = db.login("admin", "SGS@1234");
-    db.ingestSnapshotAuthorized(session.token, snapshot(-24.7));
+    db.ingestSnapshotAuthorized(session.token, snapshot(4, 3));
     db.releaseAlarm(session.token, "002", "到期測試");
     mock.timers.tick(db.ALARM_RELEASE_DURATION_MS - 1000);
-    db.ingestSnapshotAuthorized(session.token, snapshot(-24.7));
+    db.ingestSnapshotAuthorized(session.token, snapshot(4, 3));
     assert.equal(db.latestSnapshot(session.token)[0].alarm_release.reason, "到期測試");
 
     mock.timers.tick(2000);
-    db.ingestSnapshotAuthorized(session.token, snapshot(-24.7));
+    db.ingestSnapshotAuthorized(session.token, snapshot(4, 3));
     const [channel] = db.latestSnapshot(session.token);
     assert.equal(channel.alarm_release, null);
     assert.equal(channel.web_alarm_ack, false);
@@ -161,7 +162,7 @@ test("record counts are per sensor and returned on login and release", () => {
   assert.ok(before > 0);
   assert.equal(db.alarmRecordCounts()["999"], undefined);
   assert.equal(db.login("admin", "SGS@1234").alarmRecordCounts["002"], before);
-  db.ingestSnapshotAuthorized(session.token, snapshot(-24.7));
+  db.ingestSnapshotAuthorized(session.token, snapshot(4, 3));
   const result = db.releaseAlarm(session.token, "002", "計數測試");
   assert.equal(result.recordCounts["002"], before + 1);
 });
@@ -192,4 +193,69 @@ test("editing limits keeps an alarm latched until it is released", () => {
   db.saveChannelLimits(session.token, "002", { low: -31, high: 8.5 });
   assert.equal(db.alarmLatchesObject()["002"], undefined);
   db.saveChannelLimits(session.token, "002", null);
+});
+
+test("an out-of-range alarm cannot be released before its limits are saved", () => {
+  const { session } = db.login("admin", "SGS@1234");
+  db.saveChannelLimits(session.token, "002", null);
+  db.ingestSnapshotAuthorized(session.token, snapshot(4));
+  db.ingestSnapshotAuthorized(session.token, snapshot(-24.7));
+  const before = db.alarmRecordCounts()["002"];
+  const blocked = /請先調整上下限並儲存個別設定/;
+  assert.throws(() => db.releaseAlarm(session.token, "002", "x"), blocked);
+  // Limits that still exclude the reading do not help.
+  db.saveChannelLimits(session.token, "002", { low: -20, high: 8 });
+  assert.throws(() => db.releaseAlarm(session.token, "002", "x"), blocked);
+  assert.equal(db.alarmRecordCounts()["002"], before);
+
+  db.saveChannelLimits(session.token, "002", { low: -30, high: 8 });
+  const result = db.releaseAlarm(session.token, "002", "已調整範圍");
+  assert.equal(result.recordCounts["002"], before + 1);
+  // Nothing stays silenced: the next out-of-range reading alarms at once.
+  assert.equal(result.releases["002"], undefined);
+  db.ingestSnapshotAuthorized(session.token, snapshot(-31));
+  assert.equal(db.latestSnapshot(session.token)[0].web_alarm_ack, false);
+  assert.throws(() => db.releaseAlarm(session.token, "002", "x"), blocked);
+  db.saveChannelLimits(session.token, "002", null);
+});
+
+test("going out of range ends an active release of another alarm", () => {
+  const { session } = db.login("admin", "SGS@1234");
+  db.ingestSnapshotAuthorized(session.token, snapshot(4, 3));
+  db.releaseAlarm(session.token, "002", "讀值相同");
+  db.ingestSnapshotAuthorized(session.token, snapshot(9, 3));
+  assert.equal(db.login("admin", "SGS@1234").alarmReleases["002"], undefined);
+  assert.throws(
+    () => db.releaseAlarm(session.token, "002", "x"),
+    /請先調整上下限/,
+  );
+});
+
+test("a faulty sensor is released by reason alone", () => {
+  const { session } = db.login("admin", "SGS@1234");
+  db.ingestSnapshotAuthorized(session.token, snapshot(-24.7, 2));
+  assert.equal(
+    db.releaseAlarm(session.token, "002", "更換感應器").releases["002"].reason,
+    "更換感應器",
+  );
+});
+
+test("kept alarms reported by the screen are stored and releasable", () => {
+  const { session } = db.login("admin", "SGS@1234");
+  db.ingestSnapshotAuthorized(session.token, snapshot(4));
+  const saved = db.saveAlarmLatches(session.token, {
+    "002": "高於警報上限 8 °C",
+    999: "未知通道",
+  });
+  assert.equal(saved["002"].reason, "高於警報上限 8 °C");
+  assert.equal(saved["999"], undefined);
+  const operator = db.login("operator1", "1234").session;
+  assert.throws(
+    () => db.saveAlarmLatches(operator.token, { "002": "x" }),
+    /權限不足/,
+  );
+  assert.equal(
+    db.releaseAlarm(session.token, "002", "完成").latches["002"],
+    undefined,
+  );
 });

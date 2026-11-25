@@ -120,6 +120,10 @@ interface C62DatabaseBridge {
     reason: string,
     saveAsOption?: boolean,
   ): Promise<AlarmReleaseResult>;
+  saveAlarmLatches?(
+    token: string,
+    latches: Record<string, string>,
+  ): Promise<Record<string, AlarmLatch>>;
   releaseReasonUsage?(token: string): Promise<Record<string, number>>;
   renameReleaseReason?(
     token: string,
@@ -208,6 +212,11 @@ export class DatabaseService {
     if (!window.c62Db?.releaseAlarm)
       throw new Error("桌面連線模組版本過舊，請重新啟動桌面程式");
     return window.c62Db.releaseAlarm(token, channelId, reason, saveAsOption);
+  }
+  saveAlarmLatches(token: string, latches: Record<string, string>) {
+    if (!window.c62Db?.saveAlarmLatches)
+      throw new Error("桌面連線模組版本過舊，請重新啟動桌面程式");
+    return window.c62Db.saveAlarmLatches(token, latches);
   }
   releaseReasonUsage(token: string) {
     return window.c62Db?.releaseReasonUsage?.(token);

@@ -1463,6 +1463,55 @@
 
 <div
   class="limit-change-backdrop"
+  *ngIf="releaseBlocked"
+  role="presentation"
+>
+  <section
+    class="limit-change-dialog alarm-release-dialog"
+    role="alertdialog"
+    aria-modal="true"
+    aria-labelledby="release-blocked-title"
+    aria-describedby="release-blocked-text"
+  >
+    <header>
+      <span><mat-icon>warning</mat-icon></span>
+      <div>
+        <h2 id="release-blocked-title">無法解除警報</h2>
+        <p>CH{{ releaseBlocked.id }} · {{ releaseBlocked.name }}</p>
+      </div>
+    </header>
+    <div class="release-blocked-body" id="release-blocked-text">
+      <dl>
+        <div>
+          <dt>目前溫度</dt>
+          <dd class="is-out">{{ formatValue(releaseBlocked.pv) }} °C</dd>
+        </div>
+        <div>
+          <dt>警報範圍</dt>
+          <dd>
+            {{ formatValue(releaseBlocked.web_lo) }} ～
+            {{ formatValue(releaseBlocked.web_hi) }} °C
+          </dd>
+        </div>
+      </dl>
+      <p *ngIf="!session?.permissions?.includes('settings.manage')">
+        請聯絡管理員調整上下限，再解除警報。
+      </p>
+    </div>
+    <footer>
+      <button
+        type="button"
+        class="primary-button"
+        (click)="closeReleaseBlocked()"
+      >
+        我知道了
+      </button>
+    </footer>
+  </section>
+</div>
+
+<div
+  class="limit-change-backdrop"
   *ngIf="releaseTarget"
   role="presentation"
 >

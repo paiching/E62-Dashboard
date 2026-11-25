@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("c62Db", {
       reason,
       saveAsOption,
     }),
+  saveAlarmLatches: (token, latches) =>
+    ipcRenderer.invoke("alarms:save-latches", { token, latches }),
   releaseReasonUsage: (token) => ipcRenderer.invoke("alarms:reason-usage", token),
   renameReleaseReason: (token, from, to) =>
     ipcRenderer.invoke("alarms:rename-reason", { token, from, to }),

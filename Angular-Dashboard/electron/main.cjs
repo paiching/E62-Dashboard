@@ -57,6 +57,9 @@ function registerIpc() {
       input.saveAsOption === true,
     ),
   );
+  ipcMain.handle("alarms:save-latches", (_event, input) =>
+    db.saveAlarmLatches(input.token, input.latches),
+  );
   ipcMain.handle("alarms:reason-usage", (_event, token) =>
     db.releaseReasonUsage(token),
   );

@@ -285,6 +285,8 @@ const names = [
   "announceNewAlarms",
   "limitAlarmSnapshot",
   "latchLimitRecoveries",
+  "openReleaseDialog",
+  "confirmRelease",
 ];
 const members = component.members.filter(
   (node) =>
@@ -311,8 +313,19 @@ function setup() {
   const Harness = new Function(
     "createMockChannels",
     "sensorState",
+    "outsideLimits",
+    "alarmReleaseExpired",
+    "RELEASE_REASON_OTHER",
+    "RELEASE_REASON_MAX_LENGTH",
     `${compiled}; return Harness;`,
-  )(() => initial.map((c) => ({ ...c })), modelModule.exports.sensorState);
+  )(
+    () => initial.map((c) => ({ ...c })),
+    modelModule.exports.sensorState,
+    modelModule.exports.outsideLimits,
+    modelModule.exports.alarmReleaseExpired,
+    "__other__",
+    60,
+  );
   const subject = Object.assign(new Harness(), {
     channels: initial.map((c) => ({ ...c })),
     channelLimits: {},
@@ -322,7 +335,21 @@ function setup() {
     reason: (channel) => modelModule.exports.sensorReason(channel),
     appSettings: {},
     session: { token: "admin", permissions: ["settings.manage"] },
-    db: { available: true, ingestSnapshot: async () => ({}) },
+    canReleaseAlarm: true,
+    releaseReasons: ["維修"],
+    releaseTarget: null,
+    releaseBlocked: null,
+    db: {
+      available: true,
+      ingestSnapshot: async () => ({}),
+      saveAlarmLatches: async (_token, latches) =>
+        Object.fromEntries(
+          Object.entries(latches).map(([id, reason]) => [
+            id,
+            { reason, latchedAt: "2026-11-25T00:00:00Z" },
+          ]),
+        ),
+    },
     focusSensorEditor() {},
     notifyLimitAlarms() {},
     syncAlarmSound() {},
@@ -481,4 +508,46 @@ test("widening limits keeps an existing alarm until it is released", async () =>
   subject.alarmLatches = {};
   subject.refreshLimitDisplay();
   assert.equal(state(), "ok");
+});
+test("release is blocked with a dialog until in-range limits are saved", async () => {
+  const subject = setup();
+  let releases = 0;
+  subject.db.saveChannelLimits = async (_token, id, limits) => ({
+    [id]: limits,
+  });
+  subject.db.releaseAlarm = async () => {
+    releases++;
+    return { releases: {}, latches: {}, settings: {} };
+  };
+  subject.editLow = 3;
+  subject.editHigh = 4;
+  await subject.saveSensorLimits();
+
+  // Unsaved input does not count.
+  subject.editHigh = 8;
+  subject.openReleaseDialog(subject.selectedSensor);
+  assert.equal(subject.releaseTarget, null);
+  assert.equal(subject.releaseBlocked.id, "001");
+
+  subject.releaseBlocked = null;
+  await subject.saveSensorLimits();
+  subject.openReleaseDialog(subject.selectedSensor);
+  assert.equal(subject.releaseBlocked, null);
+  assert.equal(subject.releaseTarget.id, "001");
+
+  // The reading leaves the range while the reason dialog is open.
+  subject.channels = subject.channels.map((c) => ({ ...c, pv: 9 }));
+  await subject.confirmRelease();
+  assert.equal(releases, 0);
+  assert.equal(subject.releaseTarget, null);
+  assert.equal(subject.releaseBlocked.pv, 9);
+
+  subject.releaseBlocked = null;
+  subject.channels = subject.channels.map((c) => ({ ...c, pv: 5 }));
+  subject.refreshLimitDisplay();
+  subject.openReleaseDialog(subject.selectedSensor);
+  await subject.confirmRelease();
+  assert.equal(releases, 1);
+  assert.equal(subject.releaseTarget, null);
+  assert.equal(subject.state(subject.channels[0]), "ok");
 });
