@@ -42,6 +42,8 @@ interface Drag {
 export class MasonryDirective implements AfterViewInit, OnChanges, OnDestroy {
   /** Card ids per column, as last emitted; undefined packs automatically. */
   @Input("appMasonry") saved?: string[][];
+  /** Cards stay where they are: no drag handles. */
+  @Input() arrangeDisabled = false;
   @Output() readonly arranged = new EventEmitter<string[][]>();
 
   private columns: HTMLElement[][] = [];
@@ -110,6 +112,7 @@ export class MasonryDirective implements AfterViewInit, OnChanges, OnDestroy {
   }
 
   private setUpHandle(card: HTMLElement): void {
+    if (this.arrangeDisabled) return;
     const icon = card.querySelector<HTMLElement>(":scope > span");
     if (!icon || icon.classList.contains("card-drag-handle")) return;
     const title = card.querySelector("h3")?.textContent?.trim() ?? "";

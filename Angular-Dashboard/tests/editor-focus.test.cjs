@@ -6,7 +6,7 @@ const ts = require('typescript');
 const text=readFileSync(path.join(__dirname,'../src/app/app.component.ts'),'utf8');
 const ast=ts.createSourceFile('app.component.ts',text,ts.ScriptTarget.Latest,true);
 const component=ast.statements.find(node=>ts.isClassDeclaration(node)&&node.name.text==='AppComponent');
-const names=['login','limitsAccessMessage','focusSensorEditor','ensureEditorFocus','canManageLimits','onSensorBackdropMouseDown','onRefreshBackdropMouseDown'];
+const names=['can','login','limitsAccessMessage','focusSensorEditor','ensureEditorFocus','canManageLimits','onSensorBackdropMouseDown','onRefreshBackdropMouseDown'];
 const members=component.members.filter(node=>(ts.isMethodDeclaration(node)||ts.isGetAccessorDeclaration(node))&&names.includes(node.name.getText(ast)));
 assert.equal(members.length,names.length);
 const compiled=ts.transpileModule(`class Harness {${members.map(node=>node.getText(ast)).join('\n')}}`,{compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText;
@@ -15,7 +15,7 @@ function setup() {
   const document={activeElement:{matches:()=>false}};
   const Harness=new Function('window','document',`${compiled};return Harness;`)({setTimeout:fn=>scheduled.push(fn)},document);
   let focused=0;
-  const subject=Object.assign(new Harness(),{session:{username:'admin',token:'test',permissions:['settings.manage']},selectedSensor:{id:'001'},db:{available:true,desktopExpected:true,focusEditor:async()=>true},sensorLowInput:{nativeElement:{focus(){focused++;}}}});
+  const subject=Object.assign(new Harness(),{session:{username:'admin',token:'test',permissions:['sensor.limits.edit']},selectedSensor:{id:'001'},db:{available:true,desktopExpected:true,focusEditor:async()=>true},sensorLowInput:{nativeElement:{focus(){focused++;}}}});
   return {subject,scheduled,document,focused:()=>focused};
 }
 test('Electron with a missing bridge cannot silently authenticate as browser demo admin',async()=>{

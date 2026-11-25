@@ -5,10 +5,22 @@ const {
   ipcMain,
   shell,
   Notification,
+  safeStorage,
 } = require("electron");
 const path = require("node:path");
 const db = require("./database.cjs");
 const { createNotifier } = require("./notifications.cjs");
+const { createLineNotifier } = require("./line.cjs");
+const notifyLine = createLineNotifier(db.getLineDelivery);
+// Windows DPAPI: readable only by this Windows account on this computer.
+db.configureSecretCodec({
+  encrypt(text) {
+    if (!safeStorage.isEncryptionAvailable())
+      throw new Error("此電腦無法加密儲存 LINE 密碼");
+    return safeStorage.encryptString(text).toString("base64");
+  },
+  decrypt: (text) => safeStorage.decryptString(Buffer.from(text, "base64")),
+});
 const notify = createNotifier(Notification, db.getAlertSettings);
 if (process.platform === "win32")
   app.setAppUserModelId("tw.com.c62.dashboard.angular.demo");
@@ -18,7 +30,7 @@ let databasePath = "";
 
 function registerIpc() {
   ipcMain.handle("db:bootstrap", () => ({
-    settings: db.settingsObject(),
+    settings: db.visibleSettings(),
     databasePath,
   }));
   ipcMain.handle("db:status", () => db.databaseStatus());
@@ -35,6 +47,12 @@ function registerIpc() {
   });
   ipcMain.handle("alerts:notify", (_event, input) =>
     notify(input.token, input.body, input.test === true),
+  );
+  ipcMain.handle("line:save", (_event, input) =>
+    db.saveLineSettings(input.token, input.settings),
+  );
+  ipcMain.handle("line:notify", (_event, input) =>
+    notifyLine(input.token, input.body, input.test === true),
   );
   ipcMain.handle("db:cleanup-history", (_event, input) =>
     db.cleanupHistory(input.token, mainWindow, dialog),
@@ -94,6 +112,12 @@ function registerIpc() {
     db.deleteUser(input.token, input.id),
   );
   ipcMain.handle("roles:list", (_event, token) => db.listRoles(token));
+  ipcMain.handle("roles:save", (_event, input) =>
+    db.saveRole(input.token, input.role),
+  );
+  ipcMain.handle("roles:delete", (_event, input) =>
+    db.deleteRole(input.token, input.code),
+  );
 }
 
 function createWindow() {

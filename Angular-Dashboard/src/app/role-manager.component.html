@@ -1,0 +1,238 @@
+<section class="role-manager">
+  <aside class="panel role-list" aria-label="角色清單">
+    <header>
+      <h3>角色</h3>
+      <button
+        type="button"
+        class="primary-button"
+        *ngIf="can('users.roles.create')"
+        (click)="add()"
+        [disabled]="saving"
+      >
+        <mat-icon>add</mat-icon>新增角色
+      </button>
+    </header>
+    <ul>
+      <li *ngFor="let role of roles" [class.active]="role.code === draft?.code">
+        <button
+          type="button"
+          class="role-item"
+          (click)="select(role)"
+          [attr.aria-current]="role.code === draft?.code ? 'true' : null"
+        >
+          <b
+            >{{ role.displayName }}
+            <small class="role-tag" *ngIf="role.isSystem">內建</small></b
+          ><span
+            >{{ role.userCount }} 個帳號 · {{ roleCount(role) }} /
+            {{ total }} 項權限</span
+          ></button
+        ><button
+          type="button"
+          class="icon-button"
+          *ngIf="can('users.roles.create')"
+          (click)="add(role)"
+          [disabled]="saving"
+          [attr.aria-label]="'複製角色 ' + role.displayName"
+          title="複製成新角色"
+        >
+          <mat-icon>content_copy</mat-icon>
+        </button>
+      </li>
+      <li class="active" *ngIf="draft && !draft.code">
+        <div class="role-item">
+          <b>{{ draft.displayName || "未命名角色" }}</b
+          ><span>尚未儲存</span>
+        </div>
+      </li>
+    </ul>
+  </aside>
+
+  <form
+    class="panel role-editor"
+    *ngIf="draft"
+    (ngSubmit)="save()"
+    [attr.aria-busy]="saving"
+  >
+    <header>
+      <fieldset class="role-fields" [disabled]="!editable">
+        <label
+          >角色名稱<input
+            name="displayName"
+            [(ngModel)]="draft.displayName"
+            maxlength="30"
+            required
+        /></label>
+        <label
+          >說明<input
+            name="description"
+            [(ngModel)]="draft.description"
+            maxlength="120"
+            placeholder="選填"
+        /></label>
+      </fieldset>
+      <div class="role-actions">
+        <button
+          type="button"
+          class="secondary-button role-delete"
+          *ngIf="canDelete"
+          (click)="remove()"
+          (blur)="deleting = false"
+          [disabled]="saving"
+        >
+          <mat-icon>delete</mat-icon
+          >{{ deleting ? "再按一次確認刪除" : "刪除" }}</button
+        ><button
+          type="button"
+          class="secondary-button"
+          *ngIf="dirty"
+          (click)="cancel()"
+          [disabled]="saving"
+        >
+          取消變更</button
+        ><button
+          type="submit"
+          class="primary-button"
+          *ngIf="!readOnlyReason"
+          [disabled]="saving || !dirty"
+        >
+          {{ saving ? "儲存中…" : "儲存角色" }}
+        </button>
+      </div>
+      <p class="role-note" *ngIf="readOnlyReason">
+        <mat-icon>lock</mat-icon>{{ readOnlyReason }}
+      </p>
+      <p
+        class="role-message"
+        [class.form-error]="failed"
+        *ngIf="message"
+        role="status"
+      >
+        {{ message }}
+      </p>
+    </header>
+
+    <div class="permission-toolbar">
+      <b>權限 {{ draftCount }} / {{ total }}</b>
+      <div>
+        <ng-container *ngIf="!readOnlyReason">
+          <button type="button" (click)="setAll(true)" [disabled]="!editable">
+            全選</button
+          ><button
+            type="button"
+            (click)="viewOnly(catalog)"
+            [disabled]="!editable"
+          >
+            全部僅檢視</button
+          ><button type="button" (click)="setAll(false)" [disabled]="!editable">
+            全部清除
+          </button>
+        </ng-container>
+        <button type="button" (click)="toggleAllExpanded()">
+          {{ allExpanded ? "全部收合" : "全部展開" }}
+        </button>
+      </div>
+    </div>
+
+    <section
+      class="permission-menu"
+      *ngFor="let menu of catalog"
+      [class.open]="expanded.has(menu.code)"
+    >
+      <header>
+        <label class="permission-check">
+          <input
+            type="checkbox"
+            [checked]="state(menu) === 'all'"
+            [indeterminate]="state(menu) === 'some'"
+            (change)="toggle(menu)"
+            [disabled]="!editable"
+            [attr.aria-label]="kinds[menu.type] + ' ' + menu.label"
+          />
+          <mat-icon [svgIcon]="menu.icon ?? 'menu'"></mat-icon>
+          <b>{{ menu.label }}</b>
+          <small class="role-tag">{{ kinds[menu.type] }}</small>
+          <small *ngIf="menu.note">{{ menu.note }}</small>
+        </label>
+        <button
+          type="button"
+          class="permission-view-only"
+          *ngIf="!readOnlyReason"
+          (click)="viewOnly([menu])"
+          [disabled]="!editable"
+          [attr.aria-label]="menu.label + ' 僅檢視'"
+        >
+          僅檢視
+        </button>
+        <button
+          type="button"
+          class="permission-expand"
+          (click)="toggleExpanded(menu)"
+          [attr.aria-expanded]="expanded.has(menu.code)"
+          [attr.aria-label]="'展開或收合 ' + menu.label"
+        >
+          <span>{{ count(menu) }} / {{ size(menu) }}</span
+          ><mat-icon>expand_more</mat-icon>
+        </button>
+      </header>
+      <div class="permission-body" *ngIf="expanded.has(menu.code)">
+        <div class="permission-rows" *ngIf="rows(menu).length">
+          <ng-container
+            *ngFor="let row of rows(menu)"
+            [ngTemplateOutlet]="permissionRow"
+            [ngTemplateOutletContext]="{ $implicit: row }"
+          ></ng-container>
+        </div>
+        <div class="permission-tab" *ngFor="let tab of tabs(menu)">
+          <label class="permission-check">
+            <input
+              type="checkbox"
+              [checked]="state(tab) === 'all'"
+              [indeterminate]="state(tab) === 'some'"
+              (change)="toggle(tab)"
+              [disabled]="!editable"
+            />
+            <small class="role-tag">{{ kinds[tab.type] }}</small>
+            <b>{{ tab.label }}</b>
+            <small>{{ count(tab) }} / {{ size(tab) }}</small>
+          </label>
+          <div class="permission-rows">
+            <ng-container
+              *ngFor="let row of rows(tab)"
+              [ngTemplateOutlet]="permissionRow"
+              [ngTemplateOutletContext]="{ $implicit: row }"
+            ></ng-container>
+          </div>
+        </div>
+      </div>
+    </section>
+  </form>
+</section>
+
+<ng-template #permissionRow let-row>
+  <div class="permission-row">
+    <label class="permission-check">
+      <input
+        type="checkbox"
+        [checked]="granted.has(row.code)"
+        (change)="toggle(row)"
+        [disabled]="!editable"
+      />
+      <small class="role-tag" [ngClass]="'kind-' + row.type">{{
+        rowKind(row)
+      }}</small>
+      <span>{{ row.label }}</span>
+    </label>
+    <div class="permission-actions" *ngIf="row.children?.length">
+      <label class="permission-check" *ngFor="let action of row.children">
+        <input
+          type="checkbox"
+          [checked]="granted.has(action.code)"
+          (change)="toggle(action)"
+          [disabled]="!editable"
+          [attr.aria-label]="row.label + ' ' + action.label"
+        /><span>{{ action.label }}</span>
+      </label>
+    </div>
+  </div>
+</ng-template>

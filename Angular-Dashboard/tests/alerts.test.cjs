@@ -193,6 +193,7 @@ const names = [
   "announceNewAlarms",
   "playAlertSound",
   "sendAlertNotification",
+  "sendLineNotification",
   "emitAlarm",
 ];
 const methods = component.members.filter(

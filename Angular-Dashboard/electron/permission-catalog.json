@@ -1,0 +1,126 @@
+[
+  { "code": "dashboard.view", "label": "儀錶板", "type": "menu", "icon": "speed", "children": [
+    { "code": "dashboard.summary.normal", "label": "正常數量", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "dashboard.summary.alarm", "label": "警報數量", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "dashboard.summary.error", "label": "Sensor 異常數量", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "dashboard.summary.refresh", "label": "刷新頻率", "type": "card", "roles": ["operator", "guest"], "children": [
+      { "code": "dashboard.summary.refresh.edit", "label": "變更頻率", "type": "action", "roles": ["operator", "guest"] }
+    ] },
+    { "code": "dashboard.status-bar", "label": "頂部警報狀態列", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "dashboard.toolbar", "label": "搜尋與篩選列", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "dashboard.sensors", "label": "感應器卡片", "type": "card", "roles": ["operator", "guest"] }
+  ] },
+  { "code": "trends.view", "label": "趨勢圖", "type": "menu", "icon": "trending_up", "children": [
+    { "code": "trends.toolbar", "label": "更新控制列", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "trends.channels", "label": "選擇通道", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "trends.chart", "label": "PV 即時溫度圖", "type": "card", "roles": ["operator", "guest"] }
+  ] },
+  { "code": "reports.view", "label": "報表資料", "type": "menu", "icon": "table_view", "children": [
+    { "code": "reports.filter", "label": "查詢條件", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "reports.export-info", "label": "匯出資訊", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "reports.table", "label": "歷史資料表", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "reports.export", "label": "匯出 CSV", "type": "action", "roles": ["operator"] }
+  ] },
+  { "code": "alarms.view", "label": "警報中心", "type": "menu", "icon": "notifications_active", "children": [
+    { "code": "alarms.tab.all", "label": "全部", "type": "tab", "roles": ["operator", "guest"] },
+    { "code": "alarms.tab.alarm", "label": "警報", "type": "tab", "roles": ["operator", "guest"] },
+    { "code": "alarms.tab.error", "label": "異常", "type": "tab", "roles": ["operator", "guest"] }
+  ] },
+  { "code": "sensor.detail", "label": "通道詳細視窗", "type": "dialog", "icon": "monitor_heart", "note": "由儀錶板與報表開啟", "children": [
+    { "code": "sensor.reading", "label": "即時讀值與狀態", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "sensor.stats", "label": "歷史溫度統計", "type": "card", "roles": ["operator", "guest"] },
+    { "code": "sensor.limits", "label": "警報範圍", "type": "card", "roles": ["operator", "guest"], "children": [
+      { "code": "sensor.limits.edit", "label": "編輯上下限", "type": "action" }
+    ] },
+    { "code": "alarms.ack", "label": "解除警報", "type": "action", "roles": ["operator"] },
+    { "code": "sensor.records", "label": "下載解除警報紀錄", "type": "action", "roles": ["operator", "guest"] }
+  ] },
+  { "code": "users.manage", "label": "帳號權限", "type": "menu", "icon": "verified_user", "children": [
+    { "code": "users.accounts", "label": "帳號", "type": "tab", "children": [
+      { "code": "users.accounts.list", "label": "帳號清單", "type": "card", "children": [
+        { "code": "users.accounts.create", "label": "新增", "type": "action" },
+        { "code": "users.accounts.edit", "label": "編輯", "type": "action" },
+        { "code": "users.accounts.delete", "label": "刪除", "type": "action" }
+      ] }
+    ] },
+    { "code": "users.roles", "label": "角色", "type": "tab", "children": [
+      { "code": "users.roles.list", "label": "角色與權限", "type": "card", "children": [
+        { "code": "users.roles.create", "label": "新增", "type": "action" },
+        { "code": "users.roles.edit", "label": "編輯", "type": "action" },
+        { "code": "users.roles.delete", "label": "刪除", "type": "action" }
+      ] }
+    ] }
+  ] },
+  { "code": "settings.manage", "label": "設定", "type": "menu", "icon": "settings", "children": [
+    { "code": "settings.layout", "label": "調整卡片排列", "type": "action" },
+    { "code": "settings.theme", "label": "主題設定", "type": "tab", "children": [
+      { "code": "settings.theme.login-logo", "label": "登入頁 Logo", "type": "card", "children": [
+        { "code": "settings.theme.login-logo.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.theme.sidebar-logo", "label": "側邊選單 Logo", "type": "card", "children": [
+        { "code": "settings.theme.sidebar-logo.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.theme.login-background", "label": "登入背景設定", "type": "card", "children": [
+        { "code": "settings.theme.login-background.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.theme.titles", "label": "標題設定", "type": "card", "children": [
+        { "code": "settings.theme.titles.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.theme.card-size", "label": "儀錶板卡片大小", "type": "card", "children": [
+        { "code": "settings.theme.card-size.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.theme.font-size", "label": "字級設定", "type": "card", "children": [
+        { "code": "settings.theme.font-size.edit", "label": "編輯", "type": "action" }
+      ] }
+    ] },
+    { "code": "settings.data", "label": "資料設定", "type": "tab", "children": [
+      { "code": "settings.data.data-mode", "label": "資料模式", "type": "card", "children": [
+        { "code": "settings.data.data-mode.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.data.poll-interval", "label": "更新頻率", "type": "card", "children": [
+        { "code": "settings.data.poll-interval.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.data.api-url", "label": "API 資料端點", "type": "card", "children": [
+        { "code": "settings.data.api-url.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.data.api-token", "label": "EC62 API Token", "type": "card", "children": [
+        { "code": "settings.data.api-token.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.data.retention", "label": "報表保留天數", "type": "card", "children": [
+        { "code": "settings.data.retention.edit", "label": "編輯", "type": "action" }
+      ] }
+    ] },
+    { "code": "settings.database", "label": "資料庫維護", "type": "tab", "children": [
+      { "code": "settings.database.database", "label": "SQLite 資料庫", "type": "card", "children": [
+        { "code": "settings.database.database.cleanup", "label": "清理歷史資料", "type": "action" }
+      ] }
+    ] },
+    { "code": "settings.alarm", "label": "警報設定", "type": "tab", "children": [
+      { "code": "settings.alarm.default-limits", "label": "預設溫度上下限", "type": "card", "children": [
+        { "code": "settings.alarm.default-limits.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.alarm.release-reasons", "label": "解除理由設定", "type": "card", "children": [
+        { "code": "settings.alarm.release-reasons.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.alarm.alarm-sound", "label": "異常警報聲音", "type": "card", "children": [
+        { "code": "settings.alarm.alarm-sound.edit", "label": "編輯", "type": "action" },
+        { "code": "settings.alarm.alarm-sound.test", "label": "測試", "type": "action" }
+      ] },
+      { "code": "settings.alarm.status-bar", "label": "儀錶板警報狀態列", "type": "card", "children": [
+        { "code": "settings.alarm.status-bar.edit", "label": "編輯", "type": "action" }
+      ] }
+    ] },
+    { "code": "settings.notification", "label": "通知設定", "type": "tab", "children": [
+      { "code": "settings.notification.desktop-notification", "label": "桌面異常通知", "type": "card", "children": [
+        { "code": "settings.notification.desktop-notification.edit", "label": "編輯", "type": "action" },
+        { "code": "settings.notification.desktop-notification.test", "label": "測試", "type": "action" }
+      ] },
+      { "code": "settings.notification.snapshot-reminder", "label": "快照提醒", "type": "card", "children": [
+        { "code": "settings.notification.snapshot-reminder.edit", "label": "編輯", "type": "action" }
+      ] },
+      { "code": "settings.notification.line", "label": "LINE 通知", "type": "card", "children": [
+        { "code": "settings.notification.line.edit", "label": "編輯", "type": "action" }
+      ] }
+    ] }
+  ] }
+]

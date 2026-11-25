@@ -17,7 +17,7 @@ function harness() {
   const ticks = [100, 125.5];
   const Harness = new Function('performance', `${compiled}; return FeedbackHarness;`)({ now: () => ticks.shift() });
   return Object.assign(new Harness(), {
-    session: { token: 'test' }, reportMessage: '舊查詢提示', settingsMessage: '設定已儲存',
+    can: () => true, session: { token: 'test' }, reportMessage: '舊查詢提示', settingsMessage: '設定已儲存',
     reportFilter: () => ({}), applyDatabaseSettings() {},
     db: { available: true, queryReport: async () => ({ total: 200, rows: [] }) },
   });

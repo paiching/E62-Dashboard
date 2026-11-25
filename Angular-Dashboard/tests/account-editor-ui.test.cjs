@@ -22,7 +22,7 @@ const names = [
   "saveAccountEdit",
   "accountEditingAvailable",
   "accountAccessProtected",
-  "selectedAccountPermissions",
+  "can",
 ];
 const members = component.members.filter(
   (node) =>
@@ -42,7 +42,7 @@ function setup() {
   const role = {
     code: "operator",
     displayName: "Operator",
-    permissions: [{ code: "dashboard.view", label: "檢視儀錶板" }],
+    permissions: [{ code: "dashboard.view", label: "儀錶板" }],
   };
   const account = {
     id: 2,
@@ -58,7 +58,7 @@ function setup() {
     session: {
       username: "admin",
       token: "test",
-      permissions: ["users.manage"],
+      permissions: ["users.accounts.edit"],
     },
     accountRoles: [],
     accounts: [account],
@@ -82,7 +82,7 @@ test("edit opens a copy, normalizes inactive state, and cancel leaves the row un
   assert.equal(dialog.open, true);
   assert.equal(subject.accountDraft.active, false);
   assert.equal(subject.accountDraft.password, undefined);
-  assert.equal(subject.selectedAccountPermissions[0].label, "檢視儀錶板");
+  assert.equal(subject.accountRoles[0].code, "operator");
   subject.accountDraft.displayName = "Unsaved";
   subject.closeAccountEditor();
   assert.equal(dialog.open, false);

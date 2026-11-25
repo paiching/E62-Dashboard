@@ -724,6 +724,7 @@ button {
   background: #fff;
   color: var(--ink);
 }
+.card-size-card button:disabled,
 .font-size-card button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -1011,4 +1012,64 @@ button {
   box-shadow: 0 16px 40px rgba(17, 36, 61, 0.24);
   opacity: 0.94;
   pointer-events: none;
+}
+.card-size-card > span {
+  flex-shrink: 0;
+}
+.card-size-card > div {
+  flex: 1;
+  min-width: 0;
+}
+.card-size-preview {
+  --font-scale: var(--font-scale-cards);
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: var(--canvas);
+  overflow: hidden;
+}
+.card-size-preview .sensor-card {
+  width: min(100%, calc(180px * var(--font-scale) * var(--card-scale)));
+}
+.card-size-preview .sensor-card-heading > div > b {
+  display: block;
+  font-size: calc(14px * var(--font-scale));
+}
+.info-card .card-size-preview .sensor-value > span {
+  color: inherit;
+}
+.line-card > span {
+  flex-shrink: 0;
+}
+.line-card > div {
+  flex: 1;
+  min-width: 0;
+}
+.line-card label:not(.switch) {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 800;
+}
+.line-card label:not(.switch) input,
+.line-card textarea {
+  width: 100%;
+  min-height: calc(38px * var(--font-scale));
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: calc(14px * var(--font-scale));
+  font-weight: 400;
+}
+.line-card textarea {
+  resize: vertical;
+}
+.line-card .brand-actions {
+  margin-top: 14px;
 }

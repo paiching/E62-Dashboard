@@ -54,6 +54,20 @@ export interface ReportResult {
   limit: number;
   offset: number;
 }
+/** The channel secret itself never leaves the main process. */
+export interface LineSettings {
+  enabled: boolean;
+  channelId: string;
+  recipients: string[];
+  hasSecret: boolean;
+}
+export interface LineSettingsInput {
+  enabled: boolean;
+  channelId: string;
+  recipients: string[];
+  /** Blank keeps the saved secret. */
+  secret: string;
+}
 export interface DatabaseStatus {
   connected: boolean;
   checkedAt: string;
@@ -68,7 +82,17 @@ export interface CleanupResult {
 export interface AccountRole {
   code: string;
   displayName: string;
+  description: string;
+  isSystem: boolean;
+  userCount: number;
   permissions: Array<{ code: string; label: string }>;
+}
+export interface RoleInput {
+  /** Omitted when adding a role. */
+  code?: string;
+  displayName: string;
+  description: string;
+  permissions: string[];
 }
 export interface AlarmReleaseResult {
   releases: Record<string, AlarmRelease>;
@@ -97,6 +121,15 @@ interface C62DatabaseBridge {
   status(): Promise<DatabaseStatus>;
   focusEditor?(): Promise<boolean>;
   notify(
+    token: string,
+    body: string,
+    test?: boolean,
+  ): Promise<{ sent: boolean; message: string }>;
+  saveLineSettings?(
+    token: string,
+    input: LineSettingsInput,
+  ): Promise<Record<string, unknown>>;
+  notifyLine?(
     token: string,
     body: string,
     test?: boolean,
@@ -153,6 +186,11 @@ interface C62DatabaseBridge {
   saveUser(token: string, user: LocalAccount): Promise<LocalAccount[]>;
   deleteUser(token: string, id: number): Promise<LocalAccount[]>;
   listRoles(token: string): Promise<AccountRole[]>;
+  saveRole?(
+    token: string,
+    role: RoleInput,
+  ): Promise<{ code: string; roles: AccountRole[] }>;
+  deleteRole?(token: string, code: string): Promise<AccountRole[]>;
 }
 
 declare global {
@@ -180,6 +218,12 @@ export class DatabaseService {
   }
   status() {
     return window.c62Db?.status();
+  }
+  saveLineSettings(token: string, input: LineSettingsInput) {
+    return window.c62Db?.saveLineSettings?.(token, input);
+  }
+  notifyLine(token: string, body: string, test = false) {
+    return window.c62Db?.notifyLine?.(token, body, test);
   }
   notify(token: string, body: string, test = false) {
     return window.c62Db?.notify(token, body, test);
@@ -251,6 +295,16 @@ export class DatabaseService {
   }
   listRoles(token: string) {
     return window.c62Db?.listRoles(token);
+  }
+  saveRole(token: string, role: RoleInput) {
+    if (!window.c62Db?.saveRole)
+      throw new Error("桌面連線模組版本過舊，請重新啟動桌面程式");
+    return window.c62Db.saveRole(token, role);
+  }
+  deleteRole(token: string, code: string) {
+    if (!window.c62Db?.deleteRole)
+      throw new Error("桌面連線模組版本過舊，請重新啟動桌面程式");
+    return window.c62Db.deleteRole(token, code);
   }
   saveUser(token: string, user: LocalAccount) {
     return window.c62Db?.saveUser(token, user);

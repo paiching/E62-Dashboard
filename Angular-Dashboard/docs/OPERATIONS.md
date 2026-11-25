@@ -42,7 +42,7 @@ Portable EXE 可搬動，但資料庫保存在：
 
 - 檢查 `data.mode`。
 - Live 模式檢查 URL、Token、網路、防火牆及回應是否含非空 `channels`。
-- 確認登入角色有 `dashboard.view`。
+- 確認登入角色有「儀錶板」的感應器卡片權限。
 
 ### 能查報表但不能匯出
 

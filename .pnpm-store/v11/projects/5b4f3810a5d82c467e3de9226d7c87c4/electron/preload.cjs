@@ -5,6 +5,10 @@ contextBridge.exposeInMainWorld("c62Db", {
   focusEditor: () => ipcRenderer.invoke("editor:focus"),
   notify: (token, body, test = false) =>
     ipcRenderer.invoke("alerts:notify", { token, body, test }),
+  saveLineSettings: (token, settings) =>
+    ipcRenderer.invoke("line:save", { token, settings }),
+  notifyLine: (token, body, test = false) =>
+    ipcRenderer.invoke("line:notify", { token, body, test }),
   cleanupHistory: (token) =>
     ipcRenderer.invoke("db:cleanup-history", { token }),
   login: (username, password) =>
@@ -41,4 +45,7 @@ contextBridge.exposeInMainWorld("c62Db", {
   saveUser: (token, user) => ipcRenderer.invoke("users:save", { token, user }),
   deleteUser: (token, id) => ipcRenderer.invoke("users:delete", { token, id }),
   listRoles: (token) => ipcRenderer.invoke("roles:list", token),
+  saveRole: (token, role) => ipcRenderer.invoke("roles:save", { token, role }),
+  deleteRole: (token, code) =>
+    ipcRenderer.invoke("roles:delete", { token, code }),
 });

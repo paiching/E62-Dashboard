@@ -30,6 +30,7 @@ import {
   AccountRole,
   DatabaseMenu,
   DatabaseService,
+  LineSettings,
   ReportFilter,
   ReportRow,
 } from "./database.service";
@@ -58,6 +59,12 @@ import {
   readBrandImage,
 } from "./branding";
 import {
+  CARD_SIZES,
+  DEFAULT_CARD_SIZE,
+  applyCardSize,
+  parseCardSize,
+} from "./card-size";
+import {
   DEFAULT_FONT_SIZES,
   FONT_SIZE_AREAS,
   FontSizeArea,
@@ -71,6 +78,12 @@ import {
 } from "./material-icons";
 
 import { MasonryDirective } from "./masonry.directive";
+import {
+  SELECTABLE_COUNT,
+  builtInRoles,
+  permissionSummary,
+} from "./permissions";
+import { RoleManagerComponent } from "./role-manager.component";
 
 interface NavItem {
   key: ViewKey;
@@ -78,6 +91,7 @@ interface NavItem {
   icon: string;
 }
 
+type PermissionTab = "accounts" | "roles";
 type SettingsTab = "theme" | "data" | "database" | "alarm" | "notification";
 /** Card ids per column for each settings tab that has been rearranged. */
 type CardLayouts = Partial<Record<SettingsTab, string[][]>>;
@@ -99,6 +113,7 @@ interface PendingLimitChange {
     MasonryDirective,
     MatIconModule,
     MaterialSvgIconDirective,
+    RoleManagerComponent,
   ],
   templateUrl: "./app.component.html",
 })
@@ -112,6 +127,16 @@ export class AppComponent implements OnInit, OnDestroy {
     { key: "permissions", label: "帳號權限", icon: "verified_user" },
     { key: "settings", label: "設定", icon: "settings" },
   ];
+  /** What each menu needs in the browser preview; SQLite decides otherwise. */
+  private readonly previewMenus = this.navItems;
+  readonly viewPermissions: Partial<Record<ViewKey, string>> = {
+    overview: "dashboard.view",
+    trends: "trends.view",
+    channels: "reports.view",
+    alarms: "alarms.view",
+    permissions: "users.manage",
+    settings: "settings.manage",
+  };
   readonly viewTitles: Record<ViewKey, string> = {
     overview: "儀錶板",
     trends: "即時趨勢圖",
@@ -171,6 +196,20 @@ export class AppComponent implements OnInit, OnDestroy {
     { key: "notification", label: "通知設定", icon: "notifications_active" },
   ];
   settingsTab: SettingsTab = "theme";
+  readonly permissionTabs: ReadonlyArray<{
+    key: PermissionTab;
+    label: string;
+    icon: string;
+  }> = [
+    { key: "accounts", label: "帳號", icon: "group" },
+    { key: "roles", label: "角色", icon: "badge" },
+  ];
+  permissionTab: PermissionTab = "accounts";
+  readonly alarmTabs: ReadonlyArray<{ key: AlarmFilter; label: string }> = [
+    { key: "all", label: "全部" },
+    { key: "alarm", label: "警報" },
+    { key: "error", label: "異常" },
+  ];
   cardLayouts: CardLayouts = {};
   private cardLayoutSaves = 0;
   username = localStorage.getItem("edge-angular-last-username") ?? "";
@@ -181,6 +220,12 @@ export class AppComponent implements OnInit, OnDestroy {
   mobileOpen = false;
   showDashboardStatus =
     localStorage.getItem("edge-angular-show-status") !== "0";
+  readonly cardSizes = CARD_SIZES;
+  readonly defaultCardSize = DEFAULT_CARD_SIZE;
+  cardSize = DEFAULT_CARD_SIZE;
+  cardSizeSaving = false;
+  cardSizeMessage = "";
+  cardSizeFailed = false;
   readonly fontSizeAreas = FONT_SIZE_AREAS;
   fontSizes: FontSizes = { ...DEFAULT_FONT_SIZES };
   fontSizeSaving = false;
@@ -236,6 +281,16 @@ export class AppComponent implements OnInit, OnDestroy {
   notificationsEnabled = true;
   alertSettingsSaving = false;
   alertMessage = "";
+  lineSettings: LineSettings = {
+    enabled: false,
+    channelId: "",
+    recipients: [],
+    hasSecret: false,
+  };
+  lineDraft = { channelId: "", recipients: "", secret: "" };
+  lineSaving = false;
+  lineMessage = "";
+  lineFailed = false;
   private readonly alarmTracker = new AlarmTracker();
   private alertAudio?: AudioContext;
   private refreshing = false;
@@ -318,7 +373,7 @@ export class AppComponent implements OnInit, OnDestroy {
   permissionMessage = "";
   permissionFailed = false;
   accountDraft: LocalAccount | null = null;
-  accountRoles: AccountRole[] = [];
+  accountRoles: AccountRole[] = builtInRoles();
   accountEditorError = "";
   accountEditorLoading = false;
   accountSaving = false;
@@ -394,8 +449,7 @@ export class AppComponent implements OnInit, OnDestroy {
           this.appSettings["ui.default_view"] ?? "overview",
         ) as ViewKey;
         if (this.view === "account") this.view = "settings";
-        if (!this.navItems.some((item) => item.key === this.view))
-          this.view = "overview";
+        this.showPermittedView();
         this.loginError = "";
         localStorage.setItem(
           "edge-angular-last-username",
@@ -404,8 +458,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.password = "";
         await this.refreshData();
         void this.loadReleaseReasonUsage();
-        if (result.session.permissions.includes("users.manage"))
-          await this.loadDatabaseUsers();
+        await this.loadDatabaseUsers();
         return;
       } catch (error) {
         this.loginError = error instanceof Error ? error.message : "登入失敗";
@@ -414,25 +467,28 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     const users: Record<
       string,
-      { password: string; displayName: string; role: string }
+      { password: string; displayName: string; roleCode: string }
     > = {
       admin: {
         password: "SGS@1234",
         displayName: "系統管理員",
-        role: "Administrator",
+        roleCode: "administrator",
       },
       operator1: {
         password: "1234",
         displayName: "操作員 1",
-        role: "Operator",
+        roleCode: "operator",
       },
-      guest: { password: "", displayName: "訪客", role: "Guest" },
+      guest: { password: "", displayName: "訪客", roleCode: "guest" },
     };
     const account = users[this.username.trim().toLowerCase()];
     if (!account || account.password !== this.password) {
       this.loginError = "帳號或密碼錯誤";
       return;
     }
+    const role = this.accountRoles.find(
+      (item) => item.code === account.roleCode,
+    );
     this.loginError = "";
     localStorage.setItem(
       "edge-angular-last-username",
@@ -442,20 +498,12 @@ export class AppComponent implements OnInit, OnDestroy {
       token: "browser-demo",
       username: this.username.trim().toLowerCase(),
       displayName: account.displayName,
-      role: account.role,
-      roleCode: account.role.toLowerCase(),
-      permissions: [
-        "dashboard.view",
-        "trends.view",
-        "reports.view",
-        "reports.export",
-        "alarms.view",
-        "alarms.ack",
-        "users.manage",
-        "settings.manage",
-        "tests.run",
-      ],
+      role: role?.displayName ?? account.roleCode,
+      roleCode: account.roleCode,
+      permissions: role?.permissions.map((item) => item.code) ?? [],
     };
+    this.navItems = this.previewMenus.filter(({ key }) => this.canView(key));
+    this.showPermittedView();
     this.password = "";
     await this.refreshData();
   }
@@ -475,15 +523,52 @@ export class AppComponent implements OnInit, OnDestroy {
     this.alarmTracker.reset();
     this.view = "overview";
   }
+  can(code: string): boolean {
+    return Boolean(this.session?.permissions.includes(code));
+  }
+  canView(view: ViewKey): boolean {
+    const code = this.viewPermissions[view];
+    return Boolean(code && this.can(code));
+  }
+  get visibleSettingsTabs() {
+    return this.settingsTabs.filter(({ key }) => this.can(`settings.${key}`));
+  }
+  get visiblePermissionTabs() {
+    return this.permissionTabs.filter(({ key }) => this.can(`users.${key}`));
+  }
+  get visibleAlarmTabs() {
+    return this.alarmTabs.filter(({ key }) => this.can(`alarms.tab.${key}`));
+  }
+  /** Falls back to the first menu, and the first tab of each, that is allowed. */
+  private showPermittedView(): void {
+    if (!this.navItems.some((item) => item.key === this.view))
+      this.view = this.navItems[0]?.key ?? "overview";
+    const pick = <T>(tabs: Array<{ key: T }>, current: T): T =>
+      tabs.length && !tabs.some((tab) => tab.key === current)
+        ? tabs[0].key
+        : current;
+    this.settingsTab = pick(this.visibleSettingsTabs, this.settingsTab);
+    this.permissionTab = pick(this.visiblePermissionTabs, this.permissionTab);
+    this.alarmFilter = pick(this.visibleAlarmTabs, this.alarmFilter);
+  }
   navigate(view: ViewKey): void {
-    this.view = view;
     this.mobileOpen = false;
+    if (!this.canView(view)) return;
+    this.view = view;
+    this.showPermittedView();
     if (view === "channels") void this.runReportQuery();
-    if (view === "permissions") this.permissionMessage = "";
+    if (view === "permissions") this.selectPermissionTab(this.permissionTab);
     if (view === "settings") {
       void this.checkDatabaseConnection();
       void this.loadReleaseReasonUsage();
     }
+  }
+  selectPermissionTab(tab: PermissionTab): void {
+    this.permissionTab = tab;
+    this.permissionMessage = "";
+    void this.loadDatabaseUsers().catch(() => {
+      /* The lists loaded earlier stay on screen. */
+    });
   }
   selectSettingsTab(tab: SettingsTab): void {
     if (this.settingsTab === tab) return;
@@ -492,6 +577,8 @@ export class AppComponent implements OnInit, OnDestroy {
     this.settingsMessage = "";
     this.testMessage = "";
     this.fontSizeMessage = "";
+    this.cardSizeMessage = "";
+    this.lineMessage = "";
     this.brandTitlesMessage = "";
     this.brandImages.logo.message = "";
     this.brandImages.sidebar.message = "";
@@ -507,7 +594,15 @@ export class AppComponent implements OnInit, OnDestroy {
     columns: string[][] | undefined,
   ): Promise<void> {
     const layouts = { ...this.cardLayouts };
-    if (columns) layouts[tab] = columns;
+    const shown = new Set(columns?.flat());
+    // Cards this role cannot see keep the column they were in.
+    if (columns)
+      layouts[tab] = columns.map((ids, index) => [
+        ...ids,
+        ...(this.cardLayouts[tab]?.[index] ?? []).filter(
+          (id) => !shown.has(id),
+        ),
+      ]);
     else delete layouts[tab];
     this.cardLayouts = layouts;
     this.cardLayoutSaves++;
@@ -538,27 +633,43 @@ export class AppComponent implements OnInit, OnDestroy {
     this.cardLayouts = layouts;
   }
   onSettingsTabKeydown(event: KeyboardEvent): void {
-    const count = this.settingsTabs.length;
-    const current = this.settingsTabs.findIndex(
-      (tab) => tab.key === this.settingsTab,
+    const key = this.nextTab(event, this.visibleSettingsTabs, this.settingsTab);
+    if (!key) return;
+    this.selectSettingsTab(key);
+    document.getElementById(`settings-tab-${key}`)?.focus();
+  }
+  onPermissionTabKeydown(event: KeyboardEvent): void {
+    const key = this.nextTab(
+      event,
+      this.visiblePermissionTabs,
+      this.permissionTab,
     );
+    if (!key) return;
+    this.selectPermissionTab(key);
+    document.getElementById(`permission-tab-${key}`)?.focus();
+  }
+  private nextTab<T>(
+    event: KeyboardEvent,
+    tabs: ReadonlyArray<{ key: T }>,
+    selected: T,
+  ): T | undefined {
+    const count = tabs.length;
+    const current = tabs.findIndex((tab) => tab.key === selected);
     let next: number;
     if (event.key === "ArrowRight") next = (current + 1) % count;
     else if (event.key === "ArrowLeft") next = (current - 1 + count) % count;
     else if (event.key === "Home") next = 0;
     else if (event.key === "End") next = count - 1;
-    else return;
+    else return undefined;
     event.preventDefault();
-    const { key } = this.settingsTabs[next];
-    this.selectSettingsTab(key);
-    document.getElementById(`settings-tab-${key}`)?.focus();
+    return tabs[next]?.key;
   }
   /** Keeps background failures visible when their card is on another tab. */
   settingsTabIssue(tab: SettingsTab): string {
     if (tab === "database" && this.databaseState === "disconnected")
       return "資料庫連線異常";
-    if (tab === "notification")
-      return [this.alertMessage, this.soundMessage].filter(Boolean).join("；");
+    if (tab === "alarm") return this.soundMessage;
+    if (tab === "notification") return this.alertMessage;
     return "";
   }
   toggleSidebar(): void {
@@ -690,10 +801,13 @@ export class AppComponent implements OnInit, OnDestroy {
     this.pendingSoundIntervalSeconds = this.soundIntervalSeconds;
     this.notificationsEnabled =
       this.appSettings["notifications.enabled"] !== false;
+    this.applyLineSettings();
     this.showDashboardStatus =
       this.appSettings["dashboard.show_status"] !== false;
     this.fontSizes = parseFontSizes(this.appSettings["ui.font_sizes"]);
     applyFontSizes(this.fontSizes);
+    this.cardSize = parseCardSize(this.appSettings["ui.card_size"]);
+    applyCardSize(this.cardSize);
     for (const key of ["logo", "sidebar", "background"] as const)
       this.brandImages[key].url = parseBrandImage(
         key,
@@ -821,7 +935,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.navigate("alarms");
   }
   openSensor(channel: SensorChannel): void {
-    if (this.limitsSaving) return;
+    if (this.limitsSaving || !this.can("sensor.detail")) return;
     const current =
       this.channels.find((item) => item.id === channel.id) ?? channel;
     const limits = this.channelLimits[current.id] ?? this.defaultLimits;
@@ -886,10 +1000,10 @@ export class AppComponent implements OnInit, OnDestroy {
       return this.db.desktopExpected
         ? "桌面連線模組未載入，請完整關閉程式後重新啟動。"
         : "瀏覽器預覽沒有桌面資料庫連線，請由 Electron 啟動。";
-    if (!this.session?.permissions.includes("settings.manage"))
-      return `目前帳號 ${this.session?.username ?? ""} 沒有系統設定權限，請重新登入確認。`;
+    if (!this.can("sensor.limits.edit"))
+      return `目前帳號 ${this.session?.username ?? ""} 沒有編輯上下限的權限。`;
     if (this.limitsSaving) return "正在等待資料庫完成儲存…";
-    return `可編輯 · ${this.session.username} · 桌面連線模組已載入`;
+    return `可編輯 · ${this.session?.username} · 桌面連線模組已載入`;
   }
   get defaultLimits(): AlarmLimits {
     const limits = this.appSettings["alarms.default_limits"] as
@@ -903,10 +1017,22 @@ export class AppComponent implements OnInit, OnDestroy {
       : { low: 2, high: 8 };
   }
   get canManageLimits(): boolean {
-    return Boolean(
-      this.db.available &&
-      this.session?.permissions.includes("settings.manage"),
+    return this.db.available && this.can("sensor.limits.edit");
+  }
+  get canManageDefaultLimits(): boolean {
+    return (
+      this.db.available && this.can("settings.alarm.default-limits.edit")
     );
+  }
+  get defaultLimitsAccessMessage(): string {
+    if (!this.db.available)
+      return this.db.desktopExpected
+        ? "桌面連線模組未載入，請完整關閉程式後重新啟動。"
+        : "瀏覽器預覽沒有桌面資料庫連線，請由 Electron 啟動。";
+    if (!this.canManageDefaultLimits)
+      return `目前帳號 ${this.session?.username ?? ""} 沒有編輯預設上下限的權限。`;
+    if (this.limitsSaving) return "正在等待資料庫完成儲存…";
+    return `可編輯 · ${this.session?.username}`;
   }
   private refreshLimitDisplay(): void {
     const releases = { ...this.alarmReleases };
@@ -1062,10 +1188,10 @@ export class AppComponent implements OnInit, OnDestroy {
       : [];
   }
   get canReleaseAlarm(): boolean {
-    return Boolean(this.session?.permissions.includes("alarms.ack"));
+    return this.can("alarms.ack");
   }
   get canManageReleaseReasons(): boolean {
-    return Boolean(this.session?.permissions.includes("settings.manage"));
+    return this.can("settings.alarm.release-reasons.edit");
   }
   openReleaseDialog(channel: SensorChannel): void {
     if (!this.canReleaseAlarm || this.state(channel) === "ok") return;
@@ -1199,7 +1325,12 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.alarmRecordCounts[channel.id] ?? 0;
   }
   async exportAlarmReleases(channel: SensorChannel): Promise<void> {
-    if (!this.session || !this.alarmRecordCount(channel)) return;
+    if (
+      !this.session ||
+      !this.can("sensor.records") ||
+      !this.alarmRecordCount(channel)
+    )
+      return;
     try {
       if (this.db.available) {
         const result = await this.db.exportAlarmReleases(
@@ -1417,8 +1548,8 @@ export class AppComponent implements OnInit, OnDestroy {
   async saveDefaultLimits(): Promise<void> {
     if (this.limitsSaving) return;
     this.defaultLimitsFailed = true;
-    if (!this.canManageLimits || !this.session) {
-      this.defaultLimitsMessage = this.limitsAccessMessage;
+    if (!this.canManageDefaultLimits || !this.session) {
+      this.defaultLimitsMessage = this.defaultLimitsAccessMessage;
       return;
     }
     if (
@@ -1470,10 +1601,14 @@ export class AppComponent implements OnInit, OnDestroy {
     this.displayMode = mode;
   }
   async applyRefreshRate(): Promise<void> {
-    if (!this.refreshOptions.includes(this.pendingRefreshSeconds)) return;
+    if (
+      !this.refreshOptions.includes(this.pendingRefreshSeconds) ||
+      !this.can("dashboard.summary.refresh.edit")
+    )
+      return;
     if (
       this.db.available &&
-      this.session?.permissions.includes("settings.manage")
+      this.can("settings.data.poll-interval.edit")
     ) {
       if (
         !(await this.saveDatabaseSetting(
@@ -1554,7 +1689,8 @@ export class AppComponent implements OnInit, OnDestroy {
     };
   }
   async runReportQuery(): Promise<void> {
-    if (!this.session || !this.db.available) return;
+    if (!this.session || !this.db.available || !this.can("reports.table"))
+      return;
     const startedAt = performance.now();
     this.reportMessage = "";
     try {
@@ -1593,6 +1729,7 @@ export class AppComponent implements OnInit, OnDestroy {
     await this.runReportQuery();
   }
   async exportCsv(): Promise<void> {
+    if (!this.can("reports.export")) return;
     if (this.session && this.db.available) {
       try {
         const result = await this.db.exportReport(
@@ -1940,9 +2077,24 @@ export class AppComponent implements OnInit, OnDestroy {
     });
   }
 
+  private async sendLineNotification(
+    body: string,
+    test = false,
+  ): Promise<string> {
+    if (!this.session || !this.db.available) return "";
+    if (!test && !this.lineSettings?.enabled) return "";
+    const result = await this.db.notifyLine(this.session.token, body, test);
+    if (!result?.sent)
+      throw new Error(
+        `LINE：${result?.message || "通知介面未就緒，請重新啟動桌面程式"}`,
+      );
+    return result.message;
+  }
+
   private async emitAlarm(body: string): Promise<void> {
     const results = await Promise.allSettled([
       this.sendAlertNotification(body),
+      this.sendLineNotification(body),
     ]);
     this.alertMessage = results
       .filter((result) => result.status === "rejected")
@@ -2002,6 +2154,118 @@ export class AppComponent implements OnInit, OnDestroy {
     } finally {
       this.alertSettingsSaving = false;
     }
+  }
+
+  get canManageLine(): boolean {
+    return this.db.available && this.can("settings.notification.line.edit");
+  }
+  private applyLineSettings(): void {
+    const stored = this.appSettings["notifications.line"] as
+      | Partial<LineSettings>
+      | undefined;
+    const next: LineSettings = {
+      enabled: stored?.enabled === true,
+      channelId: stored?.channelId ?? "",
+      recipients: stored?.recipients ?? [],
+      hasSecret: stored?.hasSecret === true,
+    };
+    // Saving another setting must not discard values still being typed.
+    if (
+      next.channelId !== this.lineSettings.channelId ||
+      next.recipients.join() !== this.lineSettings.recipients.join()
+    )
+      this.lineDraft = {
+        ...this.lineDraft,
+        channelId: next.channelId,
+        recipients: next.recipients.join("\n"),
+      };
+    this.lineSettings = next;
+  }
+  setLineEnabled(enabled: boolean): Promise<void> {
+    const { channelId, recipients } = this.lineSettings;
+    return this.storeLineSettings({
+      enabled,
+      channelId,
+      recipients,
+      secret: "",
+    });
+  }
+  async saveLineSettings(): Promise<void> {
+    await this.storeLineSettings({
+      enabled: this.lineSettings.enabled,
+      channelId: this.lineDraft.channelId.trim(),
+      recipients: this.lineDraft.recipients.split(/[\s,，]+/).filter(Boolean),
+      secret: this.lineDraft.secret.trim(),
+    });
+  }
+  async clearLineSettings(): Promise<void> {
+    await this.storeLineSettings({
+      enabled: false,
+      channelId: "",
+      recipients: [],
+      secret: "",
+    });
+  }
+  private async storeLineSettings(input: {
+    enabled: boolean;
+    channelId: string;
+    recipients: string[];
+    secret: string;
+  }): Promise<void> {
+    if (!this.session || this.lineSaving) return;
+    const previous = this.lineSettings;
+    // Lets the switch snap back when the save is refused.
+    this.lineSettings = { ...previous, enabled: input.enabled };
+    this.lineSaving = true;
+    this.lineMessage = "";
+    try {
+      const settings = await this.db.saveLineSettings(
+        this.session.token,
+        input,
+      );
+      if (!settings) throw new Error("LINE 設定介面未就緒，請重新啟動桌面程式");
+      this.lineSettings = previous;
+      this.appSettings = settings;
+      this.applyDatabaseSettings();
+      this.lineDraft = {
+        channelId: this.lineSettings.channelId,
+        recipients: this.lineSettings.recipients.join("\n"),
+        secret: "",
+      };
+      this.lineFailed = false;
+      this.lineMessage = input.channelId
+        ? "LINE 設定已儲存"
+        : "LINE 設定已清除";
+    } catch (error) {
+      this.lineSettings = previous;
+      this.lineFailed = true;
+      this.lineMessage = this.lineErrorText(error, "LINE 設定儲存失敗");
+    } finally {
+      this.lineSaving = false;
+    }
+  }
+  async testLine(): Promise<void> {
+    if (this.lineSaving) return;
+    this.lineSaving = true;
+    this.lineMessage = "";
+    try {
+      this.lineMessage = await this.sendLineNotification(
+        "收到此訊息表示 LINE 通知可正常發送。",
+        true,
+      );
+      this.lineFailed = false;
+    } catch (error) {
+      this.lineFailed = true;
+      this.lineMessage = this.lineErrorText(error, "LINE 測試失敗");
+    } finally {
+      this.lineSaving = false;
+    }
+  }
+  /** Drops Electron's "Error invoking remote method" prefix. */
+  private lineErrorText(error: unknown, fallback: string): string {
+    return error instanceof Error
+      ? error.message.replace(/^Error invoking remote method '[^']*': Error: /, "")
+      : fallback;
   }
 
   async saveSoundInterval(): Promise<void> {
@@ -2065,21 +2329,22 @@ export class AppComponent implements OnInit, OnDestroy {
     this.permissionMessage = `帳號 ${account.username} 已刪除`;
   }
   private async loadDatabaseUsers(): Promise<void> {
-    if (this.session) {
-      const [rows, roles] = await Promise.all([
-        this.db.listUsers(this.session.token),
-        this.db.listRoles(this.session.token),
-      ]);
-      if (rows) this.accounts = rows;
-      if (roles) this.accountRoles = roles;
-    }
+    if (!this.session || !this.db.available) return;
+    const token = this.session.token;
+    const accounts = this.can("users.accounts.list");
+    const [rows, roles] = await Promise.all([
+      accounts ? this.db.listUsers(token) : undefined,
+      accounts || this.can("users.roles.list")
+        ? this.db.listRoles(token)
+        : undefined,
+    ]);
+    if (this.session?.token !== token) return;
+    if (rows) this.accounts = rows;
+    if (roles) this.accountRoles = roles;
   }
 
   get accountEditingAvailable(): boolean {
-    return (
-      this.db.available &&
-      Boolean(this.session?.permissions.includes("users.manage"))
-    );
+    return this.db.available && this.can("users.accounts.edit");
   }
   get accountAccessProtected(): boolean {
     return (
@@ -2087,22 +2352,23 @@ export class AppComponent implements OnInit, OnDestroy {
       this.accountDraft?.username === this.session?.username
     );
   }
-  get selectedAccountPermissions(): Array<{ code: string; label: string }> {
-    return (
+  get selectedRoleSummary() {
+    return permissionSummary(
       this.accountRoles.find(
         (role) => role.code === this.accountDraft?.roleCode,
-      )?.permissions ?? []
+      ),
     );
   }
   accountPermissionSummary(account: LocalAccount): string {
     const role = this.accountRoles.find(
       (item) => item.code === account.roleCode,
     );
-    return role
-      ? role.permissions.length
-        ? `${role.permissions.length} 項權限`
-        : "無授權功能"
-      : "依角色授權";
+    if (!role) return "依角色授權";
+    const granted = permissionSummary(role).reduce(
+      (sum, item) => sum + item.granted,
+      0,
+    );
+    return granted ? `${granted} / ${SELECTABLE_COUNT} 項權限` : "無授權功能";
   }
 
   async openAccountEditor(
@@ -2133,7 +2399,6 @@ export class AppComponent implements OnInit, OnDestroy {
     } catch (error) {
       this.accountEditorError =
         error instanceof Error ? error.message : "角色資料讀取失敗";
-      this.accountRoles = [];
     } finally {
       this.accountEditorLoading = false;
     }
@@ -2178,7 +2443,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (input.username === this.session.username)
         this.session.displayName = input.displayName;
       this.permissionFailed = false;
-      this.permissionMessage = `已儲存 ${input.username} 的帳號與權限設定`;
+      this.permissionMessage = `已儲存 ${input.username} 的帳號設定`;
       this.accountSaving = false;
       this.closeAccountEditor();
     } catch (error) {
@@ -2245,7 +2510,7 @@ export class AppComponent implements OnInit, OnDestroy {
     return (
       this.databaseState === "connected" &&
       !this.databaseCleaning &&
-      Boolean(this.session?.permissions.includes("settings.manage"))
+      this.can("settings.database.database.cleanup")
     );
   }
 
@@ -2309,6 +2574,24 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  async setCardSize(percent: number): Promise<void> {
+    if (this.cardSizeSaving) return;
+    const previous = this.cardSize;
+    this.cardSize = percent;
+    applyCardSize(percent);
+    this.cardSizeSaving = true;
+    this.cardSizeMessage = "";
+    this.cardSizeFailed = !(await this.saveDatabaseSetting(
+      "ui.card_size",
+      percent,
+    ));
+    this.cardSizeSaving = false;
+    if (this.cardSizeFailed) {
+      this.cardSize = previous;
+      applyCardSize(previous);
+    }
+    this.cardSizeMessage = this.settingsMessage || "卡片大小儲存失敗";
+  }
   get fontSizesAreDefault(): boolean {
     return FONT_SIZE_AREAS.every(
       ({ key }) => this.fontSizes[key] === DEFAULT_FONT_SIZES[key],
@@ -2485,6 +2768,7 @@ export class AppComponent implements OnInit, OnDestroy {
           "ui.logo_style",
           "ui.login_background",
           "ui.card_layouts",
+          "ui.card_size",
         ].includes(key)
       )
         return false;

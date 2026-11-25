@@ -7,6 +7,15 @@ const {
 } = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const {
+  ADMINISTRATOR,
+  CATALOG,
+  NODES,
+  defaultPermissions,
+  effectivePermissions,
+  normalizePermissions,
+  settingPermission,
+} = require("./permissions.cjs");
 
 let database;
 const sessions = new Map();
@@ -102,6 +111,7 @@ const IMAGE_SETTINGS = {
 };
 const LOGO_STYLES = ["inverse", "original", "light"];
 const LOGO_SIZES = ["standard", "large", "xlarge"];
+const CARD_SIZES = [85, 100, 125, 150, 200];
 const SETTINGS_TABS = ["theme", "data", "database", "alarm", "notification"];
 function normalizeCardLayouts(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -182,6 +192,13 @@ function seedDatabase() {
       "側邊選單 Logo 樣式",
     ],
     ["ui.logo_size", "standard", "display", "側邊選單 Logo 大小"],
+    [
+      LINE_KEY,
+      { enabled: false, channelId: "", recipients: [], secret: "" },
+      "notification",
+      "LINE 官方帳號推播（secret 為加密值）",
+    ],
+    ["ui.card_size", 100, "display", "儀錶板卡片大小百分比"],
     ["ui.card_layouts", {}, "display", "各設定分頁的卡片排列"],
     [
       "ui.login_background",
@@ -245,45 +262,44 @@ function seedDatabase() {
   const insertRole = database.prepare(
     "INSERT OR IGNORE INTO roles(code,display_name,description,is_system) VALUES(?,?,?,?)",
   );
+  const newRoles = new Set();
   [
-    ["administrator", "Administrator", "完整系統管理權限", 1],
+    [ADMINISTRATOR, "Administrator", "完整系統管理權限", 1],
     ["operator", "Operator", "監控、報表及警報操作", 1],
     ["guest", "Guest", "唯讀監控與報表", 1],
-  ].forEach((row) => insertRole.run(...row));
-  const permissionRows = [
-    ["dashboard.view", "檢視儀錶板", "即時感應器監控"],
-    ["trends.view", "檢視趨勢", "即時趨勢圖"],
-    ["reports.view", "查詢報表", "SQLite 歷史資料查詢"],
-    ["reports.export", "匯出報表", "匯出 CSV"],
-    ["alarms.view", "檢視警報", "警報與斷線事件"],
-    ["alarms.ack", "確認警報", "解除警報"],
-    ["users.manage", "帳號管理", "帳號、角色與權限"],
-    ["settings.manage", "系統設定", "API 與應用設定"],
-    ["tests.run", "功能測試", "通知與聲音測試"],
-  ];
+  ].forEach((row) => {
+    if (insertRole.run(...row).changes) newRoles.add(row[0]);
+  });
   const insertPermission = database.prepare(
     "INSERT OR IGNORE INTO permissions(code,display_name,description) VALUES(?,?,?)",
   );
-  permissionRows.forEach((row) => insertPermission.run(...row));
-  const matrix = {
-    administrator: permissionRows.map((row) => row[0]),
-    operator: [
-      "dashboard.view",
-      "trends.view",
-      "reports.view",
-      "reports.export",
-      "alarms.view",
-      "alarms.ack",
-      "tests.run",
-    ],
-    guest: ["dashboard.view", "trends.view", "reports.view", "alarms.view"],
-  };
-  const link = database.prepare(
-    "INSERT OR IGNORE INTO role_permissions(role_id,permission_id) SELECT r.id,p.id FROM roles r,permissions p WHERE r.code=? AND p.code=?",
+  const renamePermission = database.prepare(
+    "UPDATE permissions SET display_name=?,description=? WHERE code=?",
   );
-  Object.entries(matrix).forEach(([role, codes]) =>
-    codes.forEach((code) => link.run(role, code)),
-  );
+  const newPermissions = new Set();
+  const describePermissions = (nodes, parents) =>
+    nodes.forEach((node) => {
+      const trail = parents.join(" / ");
+      if (insertPermission.run(node.code, node.label, trail).changes)
+        newPermissions.add(node.code);
+      else renamePermission.run(node.label, trail, node.code);
+      describePermissions(node.children ?? [], [...parents, node.label]);
+    });
+  describePermissions(CATALOG, []);
+  // Replaced by the test action of each notification card.
+  database.prepare("DELETE FROM permissions WHERE code='tests.run'").run();
+  // Defaults apply once, when a role or permission first appears, so that a
+  // box unchecked in the role editor stays unchecked after a restart.
+  for (const role of [ADMINISTRATOR, "operator", "guest"])
+    grantPermissions(
+      role,
+      defaultPermissions(role).filter(
+        (code) =>
+          role === ADMINISTRATOR ||
+          newRoles.has(role) ||
+          newPermissions.has(code),
+      ),
+    );
   const menus = [
     ["overview", "儀錶板", "speed", "overview", 10, "dashboard.view"],
     ["trends", "趨勢圖", "trending_up", "trends", 20, "trends.view"],
@@ -311,6 +327,13 @@ function seedDatabase() {
     createUser("operator1", "操作員 1", "1234", "operator", "CH001-CH100");
     createUser("guest", "訪客", "", "guest", "readonly");
   }
+}
+
+function grantPermissions(roleCode, codes) {
+  const link = database.prepare(
+    "INSERT OR IGNORE INTO role_permissions(role_id,permission_id) SELECT r.id,p.id FROM roles r,permissions p WHERE r.code=? AND p.code=?",
+  );
+  codes.forEach((code) => link.run(roleCode, code));
 }
 
 function hashPassword(password) {
@@ -349,32 +372,132 @@ function createUser(
     );
 }
 function settingsObject() {
-  return Object.fromEntries(
+  const settings = Object.fromEntries(
     database
       .prepare("SELECT key,value_json FROM app_settings ORDER BY key")
       .all()
       .map((row) => [row.key, parseJson(row.value_json)]),
   );
+  // Sent to the renderer, so the encrypted LINE secret stays behind.
+  if (settings[LINE_KEY]) {
+    const { secret, ...visible } = settings[LINE_KEY];
+    settings[LINE_KEY] = { ...visible, hasSecret: Boolean(secret) };
+  }
+  return settings;
 }
-function menusForRole(roleId) {
+/** What one session may read; the API token and LINE IDs have their own card. */
+function visibleSettings(session) {
+  const settings = settingsObject();
+  const can = (code) => Boolean(session?.permissions.includes(code));
+  if (!can("settings.data.api-token") && "api.auth_token" in settings)
+    settings["api.auth_token"] = "";
+  if (!can("settings.notification.line") && settings[LINE_KEY])
+    settings[LINE_KEY] = {
+      enabled: settings[LINE_KEY].enabled,
+      channelId: "",
+      recipients: [],
+      hasSecret: false,
+    };
+  return settings;
+}
+const LINE_KEY = "notifications.line";
+const LINE_MAX_RECIPIENTS = 20;
+const unavailableCodec = () => {
+  throw new Error("此電腦無法加密儲存 LINE 密碼");
+};
+let secretCodec = { encrypt: unavailableCodec, decrypt: unavailableCodec };
+function configureSecretCodec(codec) {
+  secretCodec = codec;
+}
+function storedLineSettings() {
+  return parseJson(
+    database
+      .prepare("SELECT value_json FROM app_settings WHERE key=?")
+      .get(LINE_KEY).value_json,
+  );
+}
+function saveLineSettings(token, input) {
+  const session = requireSession(token, settingPermission(LINE_KEY));
+  const current = storedLineSettings();
+  const enabled = input?.enabled;
+  const channelId = String(input?.channelId ?? "").trim();
+  const newSecret = String(input?.secret ?? "").trim();
+  const recipients = Array.isArray(input?.recipients)
+    ? [...new Set(input.recipients.map((id) => String(id).trim()))]
+    : null;
+  if (typeof enabled !== "boolean") throw new Error("LINE 開關必須為布林值");
+  const clearing =
+    !enabled && !channelId && !newSecret && recipients?.length === 0;
+  if (!clearing) {
+    if (!/^\d{5,20}$/.test(channelId))
+      throw new Error("請輸入正確的 Channel ID（數字）");
+    if (newSecret && !/^[0-9A-Za-z]{16,128}$/.test(newSecret))
+      throw new Error("Channel Secret 格式不正確");
+    if (!newSecret && (!current.secret || current.channelId !== channelId))
+      throw new Error("請輸入此 Channel 的 Channel Secret");
+    if (
+      !recipients?.length ||
+      recipients.length > LINE_MAX_RECIPIENTS ||
+      !recipients.every((id) => /^[UCR][0-9a-f]{32}$/.test(id))
+    )
+      throw new Error(
+        `接收對象需為 1～${LINE_MAX_RECIPIENTS} 個 U／C／R 開頭的 LINE ID`,
+      );
+  }
+  const secret = clearing
+    ? ""
+    : newSecret
+      ? secretCodec.encrypt(newSecret)
+      : current.secret;
+  database
+    .prepare(
+      "UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key=?",
+    )
+    .run(json({ enabled, channelId, recipients, secret }), LINE_KEY);
+  return visibleSettings(session);
+}
+/** Main process only: includes the decrypted secret. */
+function getLineDelivery(token, test = false) {
+  requireSession(token, test ? settingPermission(LINE_KEY) : undefined);
+  const { enabled, channelId, recipients, secret } = storedLineSettings();
+  const title = settingsObject()["ui.titles"]?.title ?? DEFAULT_TITLES.title;
+  if (!enabled && !test) return { enabled: false, recipients: [], title };
+  if (!secret) throw new Error("尚未儲存 LINE 帳號與密碼");
+  let plain;
+  try {
+    plain = secretCodec.decrypt(secret);
+  } catch {
+    throw new Error("無法解密 LINE 密碼，請重新輸入 Channel Secret");
+  }
+  return { enabled, channelId, recipients, secret: plain, title };
+}
+function menusForPermissions(permissions) {
   return database
     .prepare(
-      `SELECT m.menu_key AS key,m.label,m.icon,m.route FROM menu_items m LEFT JOIN permissions p ON p.code=m.required_permission LEFT JOIN role_permissions rp ON rp.permission_id=p.id AND rp.role_id=? WHERE m.enabled=1 AND (m.required_permission IS NULL OR rp.role_id IS NOT NULL) ORDER BY m.sort_order`,
+      "SELECT menu_key AS key,label,icon,route,required_permission AS required FROM menu_items WHERE enabled=1 ORDER BY sort_order",
     )
-    .all(roleId);
+    .all()
+    .filter(({ required }) => required === null || permissions.includes(required))
+    .map(({ required, ...menu }) => menu);
 }
 function permissionsForRole(roleId) {
-  return database
-    .prepare(
-      "SELECT p.code FROM permissions p JOIN role_permissions rp ON rp.permission_id=p.id WHERE rp.role_id=?",
-    )
-    .all(roleId)
-    .map((row) => row.code);
+  return effectivePermissions(
+    database
+      .prepare(
+        "SELECT p.code FROM permissions p JOIN role_permissions rp ON rp.permission_id=p.id WHERE rp.role_id=?",
+      )
+      .all(roleId)
+      .map((row) => row.code),
+  );
 }
+/** A list of permissions means any one of them is enough. */
 function requireSession(token, permission) {
   const session = sessions.get(token);
   if (!session) throw new Error("登入已失效，請重新登入");
-  if (permission && !session.permissions.includes(permission))
+  if (
+    permission &&
+    ![permission].flat().some((code) => session.permissions.includes(code))
+  )
     throw new Error("權限不足");
   return session;
 }
@@ -402,12 +525,12 @@ function login(username, password) {
   sessions.set(token, session);
   return {
     session,
-    settings: settingsObject(),
+    settings: visibleSettings(session),
     channelLimits: channelLimitsObject(),
     alarmReleases: alarmReleasesObject(),
     alarmRecordCounts: alarmRecordCounts(),
     alarmLatches: alarmLatchesObject(),
-    menus: menusForRole(user.role_id),
+    menus: menusForPermissions(permissions),
   };
 }
 function logout(token) {
@@ -428,7 +551,7 @@ function databaseStatus() {
 }
 
 async function cleanupHistory(token, browserWindow, dialog) {
-  requireSession(token, "settings.manage");
+  requireSession(token, "settings.database.database.cleanup");
   if (cleanupInProgress) throw new Error("資料庫清理已在進行中");
   cleanupInProgress = true;
   try {
@@ -444,7 +567,7 @@ async function cleanupHistory(token, browserWindow, dialog) {
       noLink: true,
     });
     if (confirmation.response !== 1) return { canceled: true };
-    requireSession(token, "settings.manage");
+    requireSession(token, "settings.database.database.cleanup");
     let readingsDeleted, logsDeleted;
     database.exec("BEGIN IMMEDIATE");
     try {
@@ -478,7 +601,7 @@ async function cleanupHistory(token, browserWindow, dialog) {
   }
 }
 function saveSetting(token, key, value) {
-  requireSession(token, "settings.manage");
+  const session = requireSession(token, settingPermission(key));
   if (key === "alarms.default_limits") {
     validateLimits(value);
     database.exec("BEGIN IMMEDIATE");
@@ -494,7 +617,7 @@ function saveSetting(token, key, value) {
       database.exec("ROLLBACK");
       throw error;
     }
-    return settingsObject();
+    return visibleSettings(session);
   }
   if (key === "alarms.release_reasons") {
     value = normalizeReleaseReasons(value);
@@ -522,12 +645,15 @@ function saveSetting(token, key, value) {
     (!Number.isInteger(value) || value < 1 || value > 300)
   )
     throw new Error("警報聲間隔需為 1～300 的整數秒");
+  if (key === LINE_KEY) throw new Error("請由 LINE 設定儲存");
   if (key === "ui.font_sizes") value = normalizeFontSizes(value);
   if (key === "ui.titles") value = normalizeTitles(value);
   if (key === "ui.card_layouts") value = normalizeCardLayouts(value);
   if (Object.hasOwn(IMAGE_SETTINGS, key)) validateImage(key, value);
   if (key === "ui.logo_style" && !LOGO_STYLES.includes(value))
     throw new Error("不支援的 Logo 樣式");
+  if (key === "ui.card_size" && !CARD_SIZES.includes(value))
+    throw new Error("不支援的卡片大小");
   if (key === "ui.logo_size" && !LOGO_SIZES.includes(value))
     throw new Error("不支援的 Logo 大小");
   if (
@@ -539,7 +665,7 @@ function saveSetting(token, key, value) {
       "UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key=?",
     )
     .run(json(value), key);
-  return settingsObject();
+  return visibleSettings(session);
 }
 // Keep in sync with FONT_SIZE_AREAS in src/app/font-size.ts.
 const FONT_SIZE_LIMITS = { general: 150, topbar: 200, cards: 200, trends: 150 };
@@ -589,11 +715,14 @@ function releaseReasonUsageObject() {
   );
 }
 function releaseReasonUsage(token) {
-  requireSession(token, "dashboard.view");
+  requireSession(token);
   return releaseReasonUsageObject();
 }
 function renameReleaseReason(token, from, to) {
-  requireSession(token, "settings.manage");
+  const session = requireSession(
+    token,
+    settingPermission("alarms.release_reasons"),
+  );
   const oldName = String(from ?? "").trim();
   const newName = normalizeReleaseReason(to);
   const current = settingsObject()["alarms.release_reasons"];
@@ -623,7 +752,7 @@ function renameReleaseReason(token, from, to) {
     throw error;
   }
   return {
-    settings: settingsObject(),
+    settings: visibleSettings(session),
     releases: alarmReleasesObject(),
     usage: releaseReasonUsageObject(),
   };
@@ -644,7 +773,10 @@ function alarmLatchesObject() {
 // The screen may show a newer reading than the stored one (manual refresh does
 // not persist), so it reports the alarms it kept after a limit change.
 function saveAlarmLatches(token, latches) {
-  requireSession(token, "settings.manage");
+  requireSession(token, [
+    "sensor.limits.edit",
+    settingPermission("alarms.default_limits"),
+  ]);
   const insert = database.prepare(
     "INSERT OR IGNORE INTO alarm_latches(channel_id,alarm_reason,latched_at) SELECT channel_id,?,? FROM sensor_channels WHERE channel_id=?",
   );
@@ -701,8 +833,11 @@ function releaseAlarm(token, channelId, reason, saveAsOption = false) {
     throw new Error(
       "數值仍超出警報範圍，請先調整上下限並儲存個別設定，才能解除警報",
     );
-  if (saveAsOption && !session.permissions.includes("settings.manage"))
-    throw new Error("沒有系統設定權限，無法新增解除理由選項");
+  if (
+    saveAsOption &&
+    !session.permissions.includes(settingPermission("alarms.release_reasons"))
+  )
+    throw new Error("沒有解除理由設定權限，無法新增解除理由選項");
   database.exec("BEGIN IMMEDIATE");
   try {
     const now = new Date().toISOString();
@@ -751,12 +886,15 @@ function releaseAlarm(token, channelId, reason, saveAsOption = false) {
     releases: alarmReleasesObject(),
     recordCounts: alarmRecordCounts(),
     latches: alarmLatchesObject(),
-    settings: settingsObject(),
+    settings: visibleSettings(session),
     usage: releaseReasonUsageObject(),
   };
 }
 function getAlertSettings(token, test = false) {
-  requireSession(token, test ? "tests.run" : "dashboard.view");
+  requireSession(
+    token,
+    test ? "settings.notification.desktop-notification.test" : undefined,
+  );
   const settings = settingsObject();
   return {
     notificationsEnabled: settings["notifications.enabled"] !== false,
@@ -874,7 +1012,7 @@ function refreshStoredLimits() {
   }
 }
 function saveChannelLimits(token, channelId, limits) {
-  requireSession(token, "settings.manage");
+  requireSession(token, "sensor.limits.edit");
   const id = String(channelId ?? "").trim();
   if (
     !database
@@ -1041,12 +1179,14 @@ function ingestSnapshot(snapshot, source = "api", sourceUrl = null) {
   }
   return { batchId, channelCount: channels.length, recordedAt };
 }
+// Recording and alarm notices run in the background for whoever is signed in,
+// so they need a session but no particular menu.
 function ingestSnapshotAuthorized(token, snapshot, source = "mock") {
-  requireSession(token, "dashboard.view");
+  requireSession(token);
   return ingestSnapshot(snapshot, source, null);
 }
 async function syncApi(token, persist = true) {
-  requireSession(token, "dashboard.view");
+  requireSession(token);
   const settings = settingsObject(),
     url = String(settings["api.data_url"]),
     apiToken = String(settings["api.auth_token"] ?? "");
@@ -1058,7 +1198,7 @@ async function syncApi(token, persist = true) {
     throw new Error(`API ${response.status}: ${response.statusText}`);
   const snapshot = await response.json();
   validateApiSnapshot(snapshot);
-  requireSession(token, "dashboard.view");
+  requireSession(token);
   const recordedAt =
     normalizeDate(snapshot.collected_at) ||
     normalizeDate(snapshot.time) ||
@@ -1085,7 +1225,12 @@ async function syncApi(token, persist = true) {
   };
 }
 function latestSnapshot(token) {
-  requireSession(token, "dashboard.view");
+  requireSession(token, [
+    "dashboard.view",
+    "trends.view",
+    "alarms.view",
+    "sensor.detail",
+  ]);
   return hydrateChannels(
     database
       .prepare(
@@ -1130,7 +1275,7 @@ function reportWhere(filter = {}) {
   };
 }
 function queryReport(token, filter = {}) {
-  requireSession(token, "reports.view");
+  requireSession(token, "reports.table");
   const where = reportWhere(filter),
     limit = Math.min(1000, Math.max(1, Number(filter.limit) || 50)),
     offset = Math.max(0, Number(filter.offset) || 0);
@@ -1237,7 +1382,7 @@ function alarmReleaseRows(channelId) {
     .all(id);
 }
 async function exportAlarmReleases(token, channelId, browserWindow, dialog) {
-  requireSession(token, "alarms.view");
+  requireSession(token, "sensor.records");
   const id = String(channelId ?? "").trim();
   const rows = alarmReleaseRows(id);
   if (!rows.length) throw new Error("此感應器尚無解除警報紀錄");
@@ -1282,15 +1427,26 @@ async function exportAlarmReleases(token, channelId, browserWindow, dialog) {
 }
 
 function listUsers(token) {
-  requireSession(token, "users.manage");
+  requireSession(token, "users.accounts.list");
   return database
     .prepare(
       "SELECT u.id,u.username,u.display_name AS displayName,u.phone,u.email,r.code AS roleCode,r.display_name AS role,u.channel_scope AS scope,u.active FROM users u JOIN roles r ON r.id=u.role_id ORDER BY u.id",
     )
     .all();
 }
+/** Nobody may hand out, or take over, more access than they have. */
+function assertWithinAccess(actor, ...roleIds) {
+  for (const id of roleIds)
+    if (
+      permissionsForRole(id).some((code) => !actor.permissions.includes(code))
+    )
+      throw new Error("權限不足：不可操作權限高於自己的角色或帳號");
+}
 function saveUser(token, input) {
-  const actor = requireSession(token, "users.manage");
+  const actor = requireSession(
+    token,
+    input.id != null ? "users.accounts.edit" : "users.accounts.create",
+  );
   const username = String(input.username ?? "")
     .trim()
     .toLowerCase();
@@ -1322,6 +1478,7 @@ function saveUser(token, input) {
       )
       .get(id);
     if (!target) throw new Error("帳號不存在");
+    assertWithinAccess(actor, target.role_id, role.id);
     if (username !== target.username) throw new Error("不可變更登入帳號");
     const active =
       input.active == null
@@ -1368,6 +1525,7 @@ function saveUser(token, input) {
       }
     }
   } else {
+    assertWithinAccess(actor, role.id);
     createUser(
       username,
       displayName,
@@ -1381,31 +1539,119 @@ function saveUser(token, input) {
   return listUsers(token);
 }
 function deleteUser(token, id) {
-  const session = requireSession(token, "users.manage"),
+  const session = requireSession(token, "users.accounts.delete"),
     target = database
-      .prepare("SELECT username FROM users WHERE id=?")
+      .prepare("SELECT username,role_id FROM users WHERE id=?")
       .get(Number(id));
   if (!target || target.username === "admin" || Number(id) === session.userId)
     throw new Error("此帳號不可刪除");
+  assertWithinAccess(session, target.role_id);
   database.prepare("DELETE FROM users WHERE id=?").run(Number(id));
   return listUsers(token);
 }
 function listRoles(token) {
-  requireSession(token, "users.manage");
+  requireSession(token, ["users.accounts.list", "users.roles.list"]);
+  const labels = new Map(NODES.map((node) => [node.code, node.label]));
   return database
     .prepare(
-      "SELECT id,code,display_name AS displayName FROM roles ORDER BY id",
+      "SELECT r.id,r.code,r.display_name AS displayName,r.description,r.is_system AS isSystem,(SELECT COUNT(*) FROM users u WHERE u.role_id=r.id) AS userCount FROM roles r ORDER BY r.id",
     )
     .all()
-    .map((role) => ({
-      code: role.code,
-      displayName: role.displayName,
-      permissions: database
-        .prepare(
-          "SELECT p.code,p.display_name AS label FROM permissions p JOIN role_permissions rp ON rp.permission_id=p.id WHERE rp.role_id=? ORDER BY p.id",
-        )
-        .all(role.id),
+    .map(({ id, ...role }) => ({
+      ...role,
+      isSystem: Boolean(role.isSystem),
+      userCount: Number(role.userCount),
+      permissions: permissionsForRole(id).map((code) => ({
+        code,
+        label: labels.get(code),
+      })),
     }));
+}
+const ROLE_NAME_MAX_LENGTH = 30;
+const ROLE_DESCRIPTION_MAX_LENGTH = 120;
+/** Adds a role when the input has no code. Returns the code that was saved. */
+function saveRole(token, input) {
+  const editing = input?.code != null;
+  const actor = requireSession(
+    token,
+    editing ? "users.roles.edit" : "users.roles.create",
+  );
+  const text = (value) =>
+    String(value ?? "")
+      .trim()
+      .replace(/\s+/g, " ");
+  const displayName = text(input?.displayName);
+  const description = text(input?.description);
+  if (!displayName || displayName.length > ROLE_NAME_MAX_LENGTH)
+    throw new Error(`角色名稱需為 1～${ROLE_NAME_MAX_LENGTH} 個字`);
+  if (description.length > ROLE_DESCRIPTION_MAX_LENGTH)
+    throw new Error(`角色說明不可超過 ${ROLE_DESCRIPTION_MAX_LENGTH} 個字`);
+  const permissions = normalizePermissions(input?.permissions);
+  const code = editing ? String(input.code) : `role-${randomUUID()}`;
+  const role = database
+    .prepare("SELECT id FROM roles WHERE code=?")
+    .get(code);
+  if (editing) {
+    if (!role) throw new Error("角色不存在，請重新整理");
+    if (code === ADMINISTRATOR)
+      throw new Error("Administrator 固定擁有全部權限，不可修改");
+    if (role.id === actor.roleId)
+      throw new Error("不可修改目前登入帳號所屬的角色");
+    assertWithinAccess(actor, role.id);
+  }
+  if (permissions.some((item) => !actor.permissions.includes(item)))
+    throw new Error("權限不足：不可授予自己沒有的權限");
+  if (
+    database
+      .prepare(
+        "SELECT 1 FROM roles WHERE display_name=? COLLATE NOCASE AND code<>?",
+      )
+      .get(displayName, code)
+  )
+    throw new Error("角色名稱已存在");
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    if (editing) {
+      database
+        .prepare("UPDATE roles SET display_name=?,description=? WHERE id=?")
+        .run(displayName, description, role.id);
+      database
+        .prepare("DELETE FROM role_permissions WHERE role_id=?")
+        .run(role.id);
+    } else
+      database
+        .prepare(
+          "INSERT INTO roles(code,display_name,description,is_system) VALUES(?,?,?,0)",
+        )
+        .run(code, displayName, description);
+    grantPermissions(code, permissions);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
+  }
+  // Their permissions were read at login.
+  if (editing)
+    for (const [sessionToken, session] of sessions)
+      if (session.roleId === role.id) sessions.delete(sessionToken);
+  return { code, roles: listRoles(token) };
+}
+function deleteRole(token, code) {
+  const actor = requireSession(token, "users.roles.delete");
+  const role = database
+    .prepare(
+      "SELECT r.id,r.is_system,(SELECT COUNT(*) FROM users u WHERE u.role_id=r.id) AS userCount FROM roles r WHERE r.code=?",
+    )
+    .get(String(code));
+  if (!role) throw new Error("角色不存在，請重新整理");
+  if (role.is_system) throw new Error("內建角色不可刪除");
+  if (role.userCount)
+    throw new Error(
+      `尚有 ${role.userCount} 個帳號使用此角色，請先改用其他角色`,
+    );
+  assertWithinAccess(actor, role.id);
+  database.prepare("DELETE FROM roles WHERE id=?").run(role.id);
+  return listRoles(token);
 }
 
 module.exports = {
@@ -1414,6 +1660,9 @@ module.exports = {
   databaseStatus,
   cleanupHistory,
   settingsObject,
+  configureSecretCodec,
+  saveLineSettings,
+  getLineDelivery,
   login,
   logout,
   saveSetting,
@@ -1436,4 +1685,7 @@ module.exports = {
   saveUser,
   deleteUser,
   listRoles,
+  saveRole,
+  deleteRole,
+  visibleSettings,
 };

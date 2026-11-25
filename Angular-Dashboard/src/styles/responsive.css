@@ -49,9 +49,9 @@
   .summary-card { padding: 11px; gap: 8px; }
   .summary-card>span { width: 33px; height: 33px; }
   .summary-card b { font-size: calc(20px * var(--font-scale)); }
-  .sensor-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(150px * var(--font-scale))), 1fr)); gap: 7px; }
-  .mode-detailed .sensor-grid, .mode-fullscreen .sensor-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(150px * var(--font-scale))), 1fr)); }
-  .sensor-card { padding: 9px; }
+  .sensor-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(150px * var(--font-scale) * var(--card-scale))), 1fr)); gap: 7px; }
+  .mode-detailed .sensor-grid, .mode-fullscreen .sensor-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(150px * var(--font-scale) * var(--card-scale))), 1fr)); }
+  .sensor-card { padding: calc(9px * var(--card-scale)); }
   .sensor-value strong { font-size: calc(25px * var(--font-scale)); }
   .sensor-card-footer time { display: none; }
   .alarm-list article { padding: 11px; }

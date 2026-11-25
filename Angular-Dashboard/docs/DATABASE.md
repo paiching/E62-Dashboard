@@ -50,7 +50,7 @@ WAL 模式運行時可能同時出現 `.sqlite3-wal` 與 `.sqlite3-shm`，不可
 
 API／模擬資料寫入：
 
-1. 驗證 session 及 `dashboard.view` 權限。
+1. 驗證 session（背景記錄不限特定選單權限）。
 2. Live 模式從 `app_settings` 讀取 API URL 與 Token；Mock 模式接收模擬快照。
 3. 確認回應含非空 `channels` 陣列，產生 UUID `batch_id`。
 4. `BEGIN IMMEDIATE` 開始單一交易。
@@ -202,25 +202,25 @@ erDiagram
 | `ui.sidebar_logo`       | string  | 空白                             | 側邊選單 PNG data URL，空白沿用 `ui.logo` |
 | `ui.logo_style`         | string  | `inverse`                        | 側邊選單 Logo：`inverse` 暗色版、`original` 原色、`light` 白底 |
 | `ui.logo_size`          | string  | `standard`                       | 側邊選單 Logo 大小：`standard`、`large`、`xlarge` |
+| `ui.card_size`          | number  | `100`                            | 儀錶板卡片大小百分比：85、100、125、150、200 |
 | `ui.card_layouts`       | object  | `{}`                             | 各設定分頁的卡片排列（每欄的卡片代號） |
 | `ui.login_background`   | string  | 空白                             | JPEG data URL，空白為預設背景 |
+| `notifications.line`    | object  | 關閉                             | LINE 推播：`enabled`、`channelId`、`recipients`、`secret`（DPAPI 加密，不回傳畫面） |
 | `notifications.enabled` | boolean | `true`                           | 桌面通知開關                 |
 
 設定只允許更新既有 key。`api.auth_token` 目前以 JSON 明文存在本機 SQLite；正式版若有秘密管理要求，建議改存 Windows Credential Manager／DPAPI。
 
-## 9. 權限矩陣
+## 9. 權限模型
 
-| 權限              | Admin | Operator | Guest | 功能         |
-| ----------------- | :---: | :------: | :---: | ------------ |
-| `dashboard.view`  |   ✓   |    ✓     |   ✓   | 儀錶板、同步 |
-| `trends.view`     |   ✓   |    ✓     |   ✓   | 趨勢圖       |
-| `reports.view`    |   ✓   |    ✓     |   ✓   | 報表查詢     |
-| `reports.export`  |   ✓   |    ✓     |       | CSV 匯出     |
-| `alarms.view`     |   ✓   |    ✓     |   ✓   | 警報中心     |
-| `alarms.ack`      |   ✓   |    ✓     |       | 警報確認     |
-| `users.manage`    |   ✓   |          |       | 帳號管理     |
-| `settings.manage` |   ✓   |          |       | 設定管理     |
-| `tests.run`       |   ✓   |    ✓     |       | 功能測試     |
+權限項目定義於 `electron/permission-catalog.json`，層級為選單／視窗 → 分頁 → 卡片 → 操作，前後端共用；啟動時同步到 `permissions`。角色授權存於 `role_permissions`，自訂角色的 `roles.code` 為 `role-<UUID>`、`is_system` 為 0。
+
+- 操作會連帶授予所屬卡片；選單與分頁只要內含任一授權項目即為授權，全部取消則不授權。
+- 上層未授權時，下層授權不生效。
+- 預設授權只在角色或權限項目首次建立時寫入（項目的 `roles` 欄位），重新啟動不會還原；Administrator 每次啟動都補齊全部權限。
+- 舊版資料庫啟動時自動補上分頁與卡片權限，既有角色維持原本可用範圍；`tests.run` 由各通知卡片的「測試」取代並移除。
+- 設定鍵與所需權限的對應在 `electron/permissions.cjs` 的 `SETTING_PERMISSIONS`。
+- API Token 與 LINE 的 Channel ID／接收對象，只傳給有該卡片權限的登入者。
+- 背景同步、記錄及異常提醒只需有效登入，不限特定選單權限。
 
 登入後的 session token 只存在 Main Process 記憶體，關閉程式即失效。菜單隱藏不是唯一保護，每個敏感 IPC 都會再次驗證權限。
 

@@ -171,3 +171,23 @@ test("card layouts are validated, persisted and admin only", () => {
   db.initializeDatabase(directory, true);
   assert.deepEqual(db.settingsObject()["ui.card_layouts"], layouts);
 });
+
+test("dashboard card size is validated, persisted and admin only", () => {
+  const directory = mkdtempSync(path.join(tmpdir(), "c62-card-size-"));
+  db.initializeDatabase(directory, true);
+  assert.equal(db.settingsObject()["ui.card_size"], 100);
+  const { token } = db.login("admin", "SGS@1234").session;
+  assert.equal(
+    db.saveSetting(token, "ui.card_size", 150)["ui.card_size"],
+    150,
+  );
+  for (const invalid of [null, 0, 110, "150", 300])
+    assert.throws(
+      () => db.saveSetting(token, "ui.card_size", invalid),
+      /卡片大小/,
+    );
+  const guest = db.login("guest", "").session;
+  assert.throws(() => db.saveSetting(guest.token, "ui.card_size", 100));
+  db.initializeDatabase(directory, true);
+  assert.equal(db.settingsObject()["ui.card_size"], 150);
+});

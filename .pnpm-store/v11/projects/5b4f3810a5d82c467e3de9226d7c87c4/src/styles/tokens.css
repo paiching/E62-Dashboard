@@ -20,6 +20,8 @@
   --font-scale-cards: 1;
   --font-scale-trends: 1;
   --font-scale: var(--font-scale-general);
+  /* Sensor card scale; written from 系統設定 > 主題設定 > 儀錶板卡片大小. */
+  --card-scale: 1;
   --sidebar-width: calc(238px + (var(--font-scale-general) - 1) * 100px);
 }
 body {

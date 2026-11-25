@@ -275,7 +275,10 @@ const component = ast.statements.find(
 );
 const names = [
   "defaultLimits",
+  "can",
   "canManageLimits",
+  "canManageDefaultLimits",
+  "defaultLimitsAccessMessage",
   "limitsAccessMessage",
   "refreshLimitDisplay",
   "openSensor",
@@ -334,7 +337,7 @@ function setup() {
     state: (channel) => modelModule.exports.sensorState(channel),
     reason: (channel) => modelModule.exports.sensorReason(channel),
     appSettings: {},
-    session: { token: "admin", permissions: ["settings.manage"] },
+    session: { token: "admin", permissions: ["sensor.detail", "sensor.limits.edit", "settings.alarm.default-limits.edit"] },
     canReleaseAlarm: true,
     releaseReasons: ["維修"],
     releaseTarget: null,

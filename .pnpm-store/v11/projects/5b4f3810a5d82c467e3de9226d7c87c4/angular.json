@@ -23,7 +23,8 @@
               "src/styles/global.css",
               "src/styles/dashboard.css",
               "src/styles/responsive.css",
-              "src/styles/angular-overrides.css"
+              "src/styles/angular-overrides.css",
+              "src/styles/permissions.css"
             ]
           },
           "configurations": {
