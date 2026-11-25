@@ -34,6 +34,16 @@ import {
   ReportRow,
 } from "./database.service";
 import {
+  BRAND_SUBTITLE_MAX_LENGTH,
+  BRAND_TITLE_MAX_LENGTH,
+  BrandTitles,
+  DEFAULT_BRAND_TITLES,
+  LOGO_FILE_TYPES,
+  parseBrandTitles,
+  parseLogo,
+  readLogoFile,
+} from "./branding";
+import {
   DEFAULT_FONT_SIZES,
   FONT_SIZE_AREAS,
   FontSizeArea,
@@ -51,6 +61,8 @@ interface NavItem {
   label: string;
   icon: string;
 }
+
+type SettingsTab = "theme" | "data" | "database" | "alarm" | "notification";
 
 const RELEASE_REASON_OTHER = "__other__";
 const RELEASE_REASON_MAX_LENGTH = 60;
@@ -123,6 +135,18 @@ export class AppComponent implements OnInit, OnDestroy {
   apiCollectedAt = "";
   reportMessage = "";
   settingsMessage = "";
+  readonly settingsTabs: ReadonlyArray<{
+    key: SettingsTab;
+    label: string;
+    icon: string;
+  }> = [
+    { key: "theme", label: "主題設定", icon: "palette" },
+    { key: "data", label: "資料設定", icon: "dns" },
+    { key: "database", label: "資料庫維護", icon: "storage" },
+    { key: "alarm", label: "警報設定", icon: "warning" },
+    { key: "notification", label: "通知設定", icon: "notifications_active" },
+  ];
+  settingsTab: SettingsTab = "theme";
   username = localStorage.getItem("edge-angular-last-username") ?? "";
   password = "";
   loginError = "";
@@ -136,6 +160,18 @@ export class AppComponent implements OnInit, OnDestroy {
   fontSizeSaving = false;
   fontSizeMessage = "";
   fontSizeFailed = false;
+  readonly brandTitleMaxLength = BRAND_TITLE_MAX_LENGTH;
+  readonly brandSubtitleMaxLength = BRAND_SUBTITLE_MAX_LENGTH;
+  readonly logoFileTypes = LOGO_FILE_TYPES.join(",");
+  brandTitles: BrandTitles = { ...DEFAULT_BRAND_TITLES };
+  brandTitlesDraft: BrandTitles = { ...DEFAULT_BRAND_TITLES };
+  brandTitlesSaving = false;
+  brandTitlesMessage = "";
+  brandTitlesFailed = false;
+  logo = "";
+  logoSaving = false;
+  logoMessage = "";
+  logoFailed = false;
   clock = new Date();
   channels = createMockChannels();
   lastUpdated = new Date();
@@ -403,6 +439,42 @@ export class AppComponent implements OnInit, OnDestroy {
       void this.loadReleaseReasonUsage();
     }
   }
+  selectSettingsTab(tab: SettingsTab): void {
+    if (this.settingsTab === tab) return;
+    this.settingsTab = tab;
+    // These report the last action on the tab being left.
+    this.settingsMessage = "";
+    this.testMessage = "";
+    this.fontSizeMessage = "";
+    this.brandTitlesMessage = "";
+    this.logoMessage = "";
+    this.defaultLimitsMessage = "";
+    this.releaseReasonsMessage = "";
+  }
+  onSettingsTabKeydown(event: KeyboardEvent): void {
+    const count = this.settingsTabs.length;
+    const current = this.settingsTabs.findIndex(
+      (tab) => tab.key === this.settingsTab,
+    );
+    let next: number;
+    if (event.key === "ArrowRight") next = (current + 1) % count;
+    else if (event.key === "ArrowLeft") next = (current - 1 + count) % count;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = count - 1;
+    else return;
+    event.preventDefault();
+    const { key } = this.settingsTabs[next];
+    this.selectSettingsTab(key);
+    document.getElementById(`settings-tab-${key}`)?.focus();
+  }
+  /** Keeps background failures visible when their card is on another tab. */
+  settingsTabIssue(tab: SettingsTab): string {
+    if (tab === "database" && this.databaseState === "disconnected")
+      return "資料庫連線異常";
+    if (tab === "notification")
+      return [this.alertMessage, this.soundMessage].filter(Boolean).join("；");
+    return "";
+  }
   toggleSidebar(): void {
     this.collapsed = !this.collapsed;
     localStorage.setItem(
@@ -536,6 +608,16 @@ export class AppComponent implements OnInit, OnDestroy {
       this.appSettings["dashboard.show_status"] !== false;
     this.fontSizes = parseFontSizes(this.appSettings["ui.font_sizes"]);
     applyFontSizes(this.fontSizes);
+    this.logo = parseLogo(this.appSettings["ui.logo"]);
+    const titles = parseBrandTitles(this.appSettings["ui.titles"]);
+    // Saving another setting must not discard titles still being typed.
+    if (
+      titles.title !== this.brandTitles.title ||
+      titles.subtitle !== this.brandTitles.subtitle
+    )
+      this.brandTitlesDraft = { ...titles };
+    this.brandTitles = titles;
+    document.title = titles.title;
     window.clearInterval(this.dataTimer);
     this.dataTimer = window.setInterval(
       () => void this.refreshData(),
@@ -2160,6 +2242,72 @@ export class AppComponent implements OnInit, OnDestroy {
     this.fontSizeMessage = this.settingsMessage || "字級儲存失敗";
   }
 
+  get brandTitlesAreDefault(): boolean {
+    return [this.brandTitles, this.brandTitlesDraft].every(
+      ({ title, subtitle }) =>
+        title === DEFAULT_BRAND_TITLES.title &&
+        subtitle === DEFAULT_BRAND_TITLES.subtitle,
+    );
+  }
+  resetBrandTitles(): Promise<void> {
+    this.brandTitlesDraft = { ...DEFAULT_BRAND_TITLES };
+    return this.saveBrandTitles();
+  }
+  async saveBrandTitles(): Promise<void> {
+    if (this.brandTitlesSaving) return;
+    const clean = (text: string) => text.trim().replace(/\s+/g, " ");
+    const titles = {
+      title: clean(this.brandTitlesDraft.title),
+      subtitle: clean(this.brandTitlesDraft.subtitle),
+    };
+    if (!titles.title) {
+      this.brandTitlesFailed = true;
+      this.brandTitlesMessage = "請輸入專案名稱";
+      return;
+    }
+    this.brandTitlesSaving = true;
+    this.brandTitlesMessage = "";
+    this.brandTitlesFailed = !(await this.saveDatabaseSetting(
+      "ui.titles",
+      titles,
+    ));
+    this.brandTitlesSaving = false;
+    if (!this.brandTitlesFailed) this.brandTitlesDraft = { ...titles };
+    this.brandTitlesMessage = this.settingsMessage || "標題儲存失敗";
+  }
+  async selectLogo(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    // Lets the same file be picked again after a failure.
+    input.value = "";
+    if (!file || this.logoSaving) return;
+    this.logoSaving = true;
+    this.logoMessage = "";
+    try {
+      await this.storeLogo(await readLogoFile(file));
+    } catch (error) {
+      this.logoFailed = true;
+      this.logoMessage =
+        error instanceof Error ? error.message : "Logo 儲存失敗";
+    } finally {
+      this.logoSaving = false;
+    }
+  }
+  async resetLogo(): Promise<void> {
+    if (this.logoSaving) return;
+    this.logoSaving = true;
+    this.logoMessage = "";
+    try {
+      await this.storeLogo("");
+    } finally {
+      this.logoSaving = false;
+    }
+  }
+  private async storeLogo(logo: string): Promise<void> {
+    this.logoFailed = !(await this.saveDatabaseSetting("ui.logo", logo));
+    this.logoMessage = this.settingsMessage || "Logo 儲存失敗";
+  }
+
   async saveDatabaseSetting(key: string, value: unknown): Promise<boolean> {
     if (!this.session) return false;
     if (!this.db.available) {
@@ -2172,6 +2320,8 @@ export class AppComponent implements OnInit, OnDestroy {
           "api.poll_interval_ms",
           "alarms.release_reasons",
           "ui.font_sizes",
+          "ui.titles",
+          "ui.logo",
         ].includes(key)
       )
         return false;

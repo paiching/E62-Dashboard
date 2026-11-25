@@ -1,10 +1,13 @@
 <main class="login-page" *ngIf="!session">
   <section class="login-card login-card-compact">
     <div class="login-brand">
-      <span>C62</span>
+      <img *ngIf="logo; else loginBadge" [src]="logo" alt="Logo" /><ng-template
+        #loginBadge
+        ><span>C62</span></ng-template
+      >
       <div>
-        <h1>Edge Dashboard</h1>
-        <p>C62 溫度感應器監控系統</p>
+        <h1>{{ brandTitles.title }}</h1>
+        <p *ngIf="brandTitles.subtitle">{{ brandTitles.subtitle }}</p>
       </div>
     </div>
     <form (ngSubmit)="login()" autocomplete="on">
@@ -38,7 +41,7 @@
       </button>
     </form>
   </section>
-  <p class="login-mode">C62 感應器監控</p>
+  <p class="login-mode">{{ brandTitles.title }}</p>
 </main>
 
 <div class="app-shell" [class.sidebar-is-collapsed]="collapsed" *ngIf="session">
@@ -54,11 +57,23 @@
     [class.mobile-open]="mobileOpen"
   >
     <div class="sidebar-brand-row">
-      <button class="sidebar-logo" type="button" (click)="toggleSidebar()">
-        C62
+      <button
+        class="sidebar-logo"
+        [class.has-image]="logo"
+        type="button"
+        (click)="toggleSidebar()"
+        aria-label="展開或收合選單"
+      >
+        <img *ngIf="logo; else sidebarBadge" [src]="logo" alt="" /><ng-template
+          #sidebarBadge
+          >C62</ng-template
+        >
       </button>
       <div class="sidebar-brand-copy">
-        <strong>Edge Dashboard</strong><small>感應器監控</small>
+        <strong [title]="brandTitles.title">{{ brandTitles.title }}</strong
+        ><small *ngIf="brandTitles.subtitle" [title]="brandTitles.subtitle">{{
+          brandTitles.subtitle
+        }}</small>
       </div>
       <button
         class="icon-button sidebar-close-mobile"
@@ -769,510 +784,652 @@
 
       <ng-container *ngIf="view === 'settings'">
         <div
+          class="settings-tabs"
+          role="tablist"
+          aria-label="設定分類"
+          (keydown)="onSettingsTabKeydown($event)"
+        >
+          <button
+            *ngFor="let tab of settingsTabs"
+            type="button"
+            role="tab"
+            [id]="'settings-tab-' + tab.key"
+            aria-controls="settings-panel"
+            [class.active]="settingsTab === tab.key"
+            [attr.aria-selected]="settingsTab === tab.key"
+            [attr.tabindex]="settingsTab === tab.key ? 0 : -1"
+            (click)="selectSettingsTab(tab.key)"
+          >
+            <mat-icon [svgIcon]="tab.icon"></mat-icon
+            ><span>{{ tab.label }}</span
+            ><mat-icon
+              class="settings-tab-issue"
+              *ngIf="settingsTabIssue(tab.key) as issue"
+              svgIcon="error"
+              role="img"
+              aria-hidden="false"
+              [attr.aria-label]="issue"
+              [attr.title]="issue"
+            ></mat-icon>
+          </button>
+        </div>
+        <div
           class="permission-save-message"
           *ngIf="settingsMessage"
           role="status"
         >
           {{ settingsMessage }}
         </div>
-        <section class="settings-cards">
-          <article class="panel info-card default-limits-card">
-            <span><mat-icon>settings</mat-icon></span>
-            <div>
-              <h3>預設溫度上下限</h3>
-              <p>尚未個別儲存的通道皆使用此值；已個別設定的通道不受影響。</p>
-              <p class="limit-source-note">
-                目前預設值：{{ formatValue(defaultLimits.low) }} ～
-                {{ formatValue(defaultLimits.high) }} °C
-              </p>
-              <div class="limit-inputs">
+        <section
+          id="settings-panel"
+          class="settings-cards"
+          role="tabpanel"
+          [attr.aria-labelledby]="'settings-tab-' + settingsTab"
+        >
+          <ng-container *ngIf="settingsTab === 'theme'">
+            <article
+              class="panel info-card logo-card"
+              [attr.aria-busy]="logoSaving"
+            >
+              <span><mat-icon>image</mat-icon></span>
+              <div>
+                <h3>Logo 設定</h3>
+                <p>顯示於登入頁與側邊選單，選擇後立即套用並儲存。</p>
+                <div class="logo-preview">
+                  <img *ngIf="logo; else logoBadge" [src]="logo" alt="目前 Logo" />
+                  <ng-template #logoBadge><b>C62</b></ng-template>
+                </div>
+                <input
+                  #logoInput
+                  type="file"
+                  hidden
+                  [accept]="logoFileTypes"
+                  (change)="selectLogo($event)"
+                />
+                <div class="brand-actions">
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="logoInput.click()"
+                    [disabled]="logoSaving"
+                  >
+                    {{ logoSaving ? "處理中…" : "選擇圖片" }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="resetLogo()"
+                    [disabled]="logoSaving || !logo"
+                  >
+                    恢復預設
+                  </button>
+                </div>
+                <p>支援 PNG、JPG、WebP，5 MB 以內；建議使用透明背景 PNG。</p>
+                <p
+                  *ngIf="logoMessage"
+                  [class.form-error]="logoFailed"
+                  role="status"
+                >
+                  {{ logoMessage }}
+                </p>
+              </div>
+            </article>
+            <article
+              class="panel info-card settings-edit-card brand-titles-card"
+              [attr.aria-busy]="brandTitlesSaving"
+            >
+              <span><mat-icon>title</mat-icon></span>
+              <div>
+                <h3>標題設定</h3>
+                <p>顯示於登入頁與側邊選單；專案名稱同時作為視窗標題。</p>
                 <label
-                  >預設溫度下限（°C）<input
-                    type="number"
-                    step="0.1"
-                    [(ngModel)]="defaultLow"
-                    [disabled]="!canManageLimits || limitsSaving" /></label
-                ><label
-                  >預設溫度上限（°C）<input
-                    type="number"
-                    step="0.1"
-                    [(ngModel)]="defaultHigh"
-                    [disabled]="!canManageLimits || limitsSaving"
+                  >專案名稱<input
+                    [(ngModel)]="brandTitlesDraft.title"
+                    [maxlength]="brandTitleMaxLength"
+                    (keydown.enter)="saveBrandTitles()"
+                    [disabled]="brandTitlesSaving"
                 /></label>
-              </div>
-              <button
-                class="secondary-button"
-                (click)="saveDefaultLimits()"
-                [disabled]="!canManageLimits || limitsSaving"
-              >
-                {{ limitsSaving ? "儲存中…" : "儲存預設值" }}
-              </button>
-              <p role="status">{{ limitsAccessMessage }}</p>
-              <p
-                *ngIf="defaultLimitsMessage"
-                [class.form-error]="defaultLimitsFailed"
-                role="status"
-              >
-                {{ defaultLimitsMessage }}
-              </p>
-            </div>
-          </article>
-          <article class="panel info-card alert-settings-card">
-            <span><mat-icon>volume_up</mat-icon></span>
-            <div>
-              <div class="alert-setting-heading">
-                <h3>異常警報聲音</h3>
-                <label class="switch"
-                  ><input
-                    type="checkbox"
-                    aria-label="啟用警報聲音"
-                    [ngModel]="soundEnabled"
-                    (ngModelChange)="
-                      setAlertEnabled('alarms.sound_enabled', $event)
-                    "
-                    [disabled]="alertSettingsSaving" /><span></span
-                ></label>
-              </div>
-              <p>
-                {{ soundEnabled ? "已啟用" : "已關閉" }} · 異常持續時，每
-                {{ soundIntervalSeconds }} 秒播放一次。
-              </p>
-              <div class="alarm-interval-setting">
                 <label
-                  >警報聲間隔（秒）<input
-                    type="number"
-                    min="1"
-                    max="300"
-                    step="1"
-                    [(ngModel)]="pendingSoundIntervalSeconds"
-                    [disabled]="alertSettingsSaving" /></label
+                  >次標<input
+                    [(ngModel)]="brandTitlesDraft.subtitle"
+                    [maxlength]="brandSubtitleMaxLength"
+                    (keydown.enter)="saveBrandTitles()"
+                    placeholder="可留空"
+                    [disabled]="brandTitlesSaving"
+                /></label>
+                <div class="brand-actions">
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="saveBrandTitles()"
+                    [disabled]="brandTitlesSaving"
+                  >
+                    {{ brandTitlesSaving ? "儲存中…" : "儲存標題" }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="resetBrandTitles()"
+                    [disabled]="brandTitlesSaving || brandTitlesAreDefault"
+                  >
+                    恢復預設
+                  </button>
+                </div>
+                <p
+                  *ngIf="brandTitlesMessage"
+                  [class.form-error]="brandTitlesFailed"
+                  role="status"
+                >
+                  {{ brandTitlesMessage }}
+                </p>
+              </div>
+            </article>
+            <article
+              class="panel info-card font-size-card"
+              [attr.aria-busy]="fontSizeSaving"
+            >
+              <span><mat-icon>edit</mat-icon></span>
+              <div>
+                <h3>字級設定</h3>
+                <p>各區域可分開調整，選擇後立即套用並儲存。</p>
+                <div class="font-size-fields">
+                  <label *ngFor="let area of fontSizeAreas"
+                    >{{ area.label
+                    }}<select
+                      [ngModel]="fontSizes[area.key]"
+                      (ngModelChange)="setFontSize(area.key, $event)"
+                      [disabled]="fontSizeSaving"
+                    >
+                      <option
+                        *ngFor="let level of area.levels"
+                        [ngValue]="level.percent"
+                      >
+                        {{ level.label }}
+                      </option>
+                    </select></label
+                  >
+                </div>
+                <button
+                  type="button"
+                  class="secondary-button"
+                  (click)="resetFontSizes()"
+                  [disabled]="fontSizeSaving || fontSizesAreDefault"
+                >
+                  全部恢復標準
+                </button>
+                <p
+                  class="font-size-message"
+                  [class.form-error]="fontSizeFailed"
+                  *ngIf="fontSizeMessage"
+                  role="status"
+                >
+                  {{ fontSizeMessage }}
+                </p>
+              </div>
+            </article>
+            <article class="panel info-card dashboard-status-setting">
+              <span><mat-icon>notifications_active</mat-icon></span>
+              <div>
+                <h3>儀錶板警報狀態列</h3>
+                <p>此設定同樣保存於 SQLite。</p>
+                <b>{{ showDashboardStatus ? "目前開啟" : "目前關閉" }}</b>
+              </div>
+              <label class="switch"
+                ><input
+                  type="checkbox"
+                  [(ngModel)]="showDashboardStatus"
+                  (change)="
+                    saveDatabaseSetting(
+                      'dashboard.show_status',
+                      showDashboardStatus
+                    )
+                  " /><span></span
+              ></label>
+            </article>
+          </ng-container>
+          <ng-container *ngIf="settingsTab === 'data'">
+            <article class="panel info-card settings-edit-card">
+              <span><mat-icon>storage</mat-icon></span>
+              <div>
+                <h3>資料模式</h3>
+                <p>Mock 也會寫入 SQLite，方便先測試報表。</p>
+                <select [(ngModel)]="appSettings['data.mode']">
+                  <option value="mock">MOCK · 模擬資料</option>
+                  <option value="live">LIVE · 正式 API</option></select
                 ><button
                   class="secondary-button"
-                  (click)="saveSoundInterval()"
-                  [disabled]="alertSettingsSaving"
-                >
-                  儲存間隔
-                </button>
-              </div>
-              <p>
-                與儀錶板刷新頻率獨立；偵測到全部恢復正常、關閉聲音或登出後停止。
-              </p>
-              <button
-                class="test-button"
-                (click)="testSound()"
-                [disabled]="!soundEnabled || alertSettingsSaving"
-              >
-                <mat-icon>volume_up</mat-icon>測試聲音
-              </button>
-            </div>
-          </article>
-          <article class="panel info-card alert-settings-card">
-            <span><mat-icon>notifications_active</mat-icon></span>
-            <div>
-              <div class="alert-setting-heading">
-                <h3>桌面異常通知</h3>
-                <label class="switch"
-                  ><input
-                    type="checkbox"
-                    aria-label="啟用桌面通知"
-                    [ngModel]="notificationsEnabled"
-                    (ngModelChange)="
-                      setAlertEnabled('notifications.enabled', $event)
-                    "
-                    [disabled]="alertSettingsSaving" /><span></span
-                ></label>
-              </div>
-              <p>
-                {{ notificationsEnabled ? "已啟用" : "已關閉" }} ·
-                同一異常不會每次刷新重複通知。
-              </p>
-              <button
-                class="test-button"
-                (click)="testNotification()"
-                [disabled]="!notificationsEnabled || alertSettingsSaving"
-              >
-                <mat-icon>notifications_active</mat-icon>測試通知
-              </button>
-              <p>需保持程式執行；Windows 勿擾或關閉通知可能阻擋顯示。</p>
-            </div>
-          </article>
-          <article class="panel info-card alert-settings-card">
-            <span><mat-icon>notifications_active</mat-icon></span>
-            <div>
-              <div class="alert-setting-heading">
-                <h3>快照提醒</h3>
-                <label class="switch"
-                  ><input
-                    type="checkbox"
-                    aria-label="啟用快照提醒"
-                    [ngModel]="snapshotReminderEnabled"
-                    (ngModelChange)="
-                      setAlertEnabled(
-                        'notifications.snapshot_stale_enabled',
-                        $event
-                      )
-                    "
-                    [disabled]="alertSettingsSaving" /><span></span
-                ></label>
-              </div>
-              <p>
-                {{ snapshotReminderEnabled ? "已啟用" : "已關閉" }} ·
-                開啟後，設備資料快照過期時顯示提醒。
-              </p>
-              <p>預設關閉，切換後自動儲存。</p>
-            </div>
-          </article>
-          <div
-            class="alert-settings-feedback"
-            *ngIf="testMessage || alertMessage || soundMessage"
-            role="status"
-          >
-            <p *ngIf="testMessage">{{ testMessage }}</p>
-            <p *ngIf="alertMessage" class="form-error">{{ alertMessage }}</p>
-            <p *ngIf="soundMessage" class="form-error">{{ soundMessage }}</p>
-          </div>
-          <article
-            class="panel info-card database-card"
-            [attr.aria-busy]="databaseCleaning"
-          >
-            <span><mat-icon>storage</mat-icon></span>
-            <div>
-              <h3>SQLite 資料庫</h3>
-              <div
-                class="database-status"
-                [ngClass]="databaseState"
-                role="status"
-              >
-                <span class="database-status-dot" aria-hidden="true"></span
-                >{{ databaseStatusLabel }}
-              </div>
-              <p>API 歷史、報表、設定、帳號及權限的單一資料來源。</p>
-              <small class="database-path">{{ databaseFileName }}</small>
-              <small class="database-check-time" *ngIf="databaseCheckedAt"
-                >最後檢查：{{ formatTime(databaseCheckedAt) }}（每 10
-                秒更新）</small
-              >
-              <p class="database-error" *ngIf="databaseError">
-                {{ databaseError }}
-              </p>
-              <div class="database-actions">
-                <button
-                  type="button"
-                  class="secondary-button"
-                  (click)="checkDatabaseConnection()"
-                  [disabled]="
-                    databaseChecking ||
-                    databaseCleaning ||
-                    databaseState === 'browser'
+                  (click)="
+                    saveDatabaseSetting('data.mode', appSettings['data.mode'])
                   "
                 >
-                  <mat-icon>refresh</mat-icon
-                  >{{ databaseChecking ? "檢查中…" : "檢查連線" }}
+                  儲存模式
                 </button>
+              </div>
+            </article>
+            <article class="panel info-card settings-edit-card">
+              <span><mat-icon>refresh</mat-icon></span>
+              <div>
+                <h3>更新頻率</h3>
+                <p>Dashboard 背景同步與寫入間隔。</p>
+                <select
+                  [(ngModel)]="appSettings['api.poll_interval_ms']"
+                  aria-label="更新頻率"
+                >
+                  <option
+                    *ngFor="let seconds of refreshOptions"
+                    [ngValue]="seconds * 1000"
+                  >
+                    {{ seconds }} 秒
+                  </option></select
+                ><button
+                  class="secondary-button"
+                  (click)="
+                    saveDatabaseSetting(
+                      'api.poll_interval_ms',
+                      appSettings['api.poll_interval_ms']
+                    )
+                  "
+                >
+                  儲存頻率
+                </button>
+              </div>
+            </article>
+            <article class="panel info-card settings-edit-card">
+              <span><mat-icon>dns</mat-icon></span>
+              <div>
+                <h3>API 資料端點</h3>
+                <p>Live 模式每次讀取成功後立即寫入 sensor_readings。</p>
+                <input
+                  [(ngModel)]="appSettings['api.data_url']"
+                  placeholder="http://127.0.0.1:8080/api/data"
+                /><button
+                  class="secondary-button"
+                  (click)="
+                    saveDatabaseSetting(
+                      'api.data_url',
+                      appSettings['api.data_url']
+                    )
+                  "
+                >
+                  儲存端點
+                </button>
+              </div>
+            </article>
+            <article class="panel info-card settings-edit-card">
+              <span><mat-icon>key</mat-icon></span>
+              <div>
+                <h3>EC62 API Token</h3>
+                <p>需要驗證時會以 X-EC62-Token Header 傳送。</p>
+                <input
+                  type="password"
+                  [(ngModel)]="appSettings['api.auth_token']"
+                  placeholder="未啟用驗證可留空"
+                /><button
+                  class="secondary-button"
+                  (click)="
+                    saveDatabaseSetting(
+                      'api.auth_token',
+                      appSettings['api.auth_token']
+                    )
+                  "
+                >
+                  儲存 Token
+                </button>
+              </div>
+            </article>
+          </ng-container>
+          <ng-container *ngIf="settingsTab === 'database'">
+            <article
+              class="panel info-card database-card"
+              [attr.aria-busy]="databaseCleaning"
+            >
+              <span><mat-icon>storage</mat-icon></span>
+              <div>
+                <h3>SQLite 資料庫</h3>
+                <div
+                  class="database-status"
+                  [ngClass]="databaseState"
+                  role="status"
+                >
+                  <span class="database-status-dot" aria-hidden="true"></span
+                  >{{ databaseStatusLabel }}
+                </div>
+                <p>API 歷史、報表、設定、帳號及權限的單一資料來源。</p>
+                <small class="database-path">{{ databaseFileName }}</small>
+                <small class="database-check-time" *ngIf="databaseCheckedAt"
+                  >最後檢查：{{ formatTime(databaseCheckedAt) }}（每 10
+                  秒更新）</small
+                >
+                <p class="database-error" *ngIf="databaseError">
+                  {{ databaseError }}
+                </p>
+                <div class="database-actions">
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="checkDatabaseConnection()"
+                    [disabled]="
+                      databaseChecking ||
+                      databaseCleaning ||
+                      databaseState === 'browser'
+                    "
+                  >
+                    <mat-icon>refresh</mat-icon
+                    >{{ databaseChecking ? "檢查中…" : "檢查連線" }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button database-cleanup-button"
+                    (click)="cleanupDatabase()"
+                    [disabled]="!canCleanupDatabase"
+                  >
+                    <mat-icon>delete</mat-icon
+                    >{{ databaseCleaning ? "確認／清理中…" : "清理歷史資料" }}
+                  </button>
+                </div>
+                <p *ngIf="databaseState === 'browser'">
+                  清理功能需以 Electron 桌面版啟動。
+                </p>
+                <p
+                  *ngIf="databaseCleanupMessage"
+                  class="database-cleanup-result"
+                  [class.database-error]="databaseCleanupFailed"
+                  role="status"
+                >
+                  {{ databaseCleanupMessage }}
+                </p>
+              </div>
+            </article>
+            <article class="panel info-card settings-edit-card">
+              <span><mat-icon>table_view</mat-icon></span>
+              <div>
+                <h3>報表保留天數</h3>
+                <p>每次匯入後自動清理超過期限的歷史資料。</p>
+                <input
+                  type="number"
+                  min="1"
+                  [(ngModel)]="appSettings['report.retention_days']"
+                /><button
+                  class="secondary-button"
+                  (click)="
+                    saveDatabaseSetting(
+                      'report.retention_days',
+                      appSettings['report.retention_days']
+                    )
+                  "
+                >
+                  儲存天數
+                </button>
+              </div>
+            </article>
+          </ng-container>
+          <ng-container *ngIf="settingsTab === 'alarm'">
+            <article class="panel info-card default-limits-card">
+              <span><mat-icon>settings</mat-icon></span>
+              <div>
+                <h3>預設溫度上下限</h3>
+                <p>尚未個別儲存的通道皆使用此值；已個別設定的通道不受影響。</p>
+                <p class="limit-source-note">
+                  目前預設值：{{ formatValue(defaultLimits.low) }} ～
+                  {{ formatValue(defaultLimits.high) }} °C
+                </p>
+                <div class="limit-inputs">
+                  <label
+                    >預設溫度下限（°C）<input
+                      type="number"
+                      step="0.1"
+                      [(ngModel)]="defaultLow"
+                      [disabled]="!canManageLimits || limitsSaving" /></label
+                  ><label
+                    >預設溫度上限（°C）<input
+                      type="number"
+                      step="0.1"
+                      [(ngModel)]="defaultHigh"
+                      [disabled]="!canManageLimits || limitsSaving"
+                  /></label>
+                </div>
                 <button
-                  type="button"
-                  class="secondary-button database-cleanup-button"
-                  (click)="cleanupDatabase()"
-                  [disabled]="!canCleanupDatabase"
+                  class="secondary-button"
+                  (click)="saveDefaultLimits()"
+                  [disabled]="!canManageLimits || limitsSaving"
                 >
-                  <mat-icon>delete</mat-icon
-                  >{{ databaseCleaning ? "確認／清理中…" : "清理歷史資料" }}
+                  {{ limitsSaving ? "儲存中…" : "儲存預設值" }}
+                </button>
+                <p role="status">{{ limitsAccessMessage }}</p>
+                <p
+                  *ngIf="defaultLimitsMessage"
+                  [class.form-error]="defaultLimitsFailed"
+                  role="status"
+                >
+                  {{ defaultLimitsMessage }}
+                </p>
+              </div>
+            </article>
+            <article
+              class="panel info-card settings-edit-card release-reasons-card"
+            >
+              <span><mat-icon>warning</mat-icon></span>
+              <div>
+                <h3>解除理由設定</h3>
+                <p>
+                  解除警報時可從下拉選單選擇；未設定時使用者需選「其他」自行填寫。已使用過的理由不能刪除，但可改名。
+                </p>
+                <ul class="release-reason-list" *ngIf="releaseReasons.length">
+                  <li
+                    *ngFor="let item of releaseReasons"
+                    [class.editing]="renamingReleaseReason === item"
+                  >
+                    <ng-container
+                      *ngIf="renamingReleaseReason === item; else reasonChip"
+                    >
+                      <input
+                        class="release-reason-rename"
+                        [(ngModel)]="renameReleaseReasonText"
+                        [maxlength]="releaseReasonMaxLength"
+                        [attr.aria-label]="'改名解除理由 ' + item"
+                        (keydown.enter)="confirmRenameReleaseReason()"
+                        (keydown.escape)="cancelRenameReleaseReason()"
+                        [disabled]="releaseReasonsSaving"
+
+                      /><button
+                        type="button"
+                        class="icon-button"
+                        (click)="confirmRenameReleaseReason()"
+                        [disabled]="releaseReasonsSaving"
+                        aria-label="儲存名稱"
+                        title="儲存名稱"
+                      >
+                        <mat-icon>check_circle</mat-icon></button
+                      ><button
+                        type="button"
+                        class="icon-button"
+                        (click)="cancelRenameReleaseReason()"
+                        [disabled]="releaseReasonsSaving"
+                        aria-label="取消改名"
+                        title="取消改名"
+                      >
+                        <mat-icon>close</mat-icon>
+                      </button>
+                    </ng-container>
+                    <ng-template #reasonChip>
+                      <span>{{ item }}</span
+                      ><small
+                        class="release-reason-count"
+                        *ngIf="releaseReasonUseCount(item)"
+                        [title]="'已使用 ' + releaseReasonUseCount(item) + ' 次'"
+                        >{{ releaseReasonUseCount(item) }}</small
+                      ><button
+                        type="button"
+                        class="icon-button"
+                        (click)="startRenameReleaseReason(item)"
+                        [disabled]="releaseReasonsSaving"
+                        [attr.aria-label]="'改名解除理由 ' + item"
+                        title="改名"
+                      >
+                        <mat-icon>edit</mat-icon></button
+                      ><button
+                        type="button"
+                        class="icon-button"
+                        (click)="removeReleaseReason(item)"
+                        [disabled]="
+                          releaseReasonsSaving || releaseReasonUseCount(item) > 0
+                        "
+                        [attr.aria-label]="'刪除解除理由 ' + item"
+                        [title]="
+                          releaseReasonUseCount(item)
+                            ? '已有解除紀錄，不能刪除，可改名'
+                            : '刪除'
+                        "
+                      >
+                        <mat-icon>delete</mat-icon>
+                      </button>
+                    </ng-template>
+                  </li>
+                </ul>
+                <p class="release-reason-empty" *ngIf="!releaseReasons.length">
+                  尚未設定任何解除理由。
+                </p>
+                <input
+                  [(ngModel)]="newReleaseReason"
+                  [maxlength]="releaseReasonMaxLength"
+                  placeholder="例如：設備維修中、除霜作業"
+                  aria-label="新增解除理由"
+                  (keydown.enter)="addReleaseReason()"
+                  [disabled]="releaseReasonsSaving"
+                /><button
+                  class="secondary-button"
+                  (click)="addReleaseReason()"
+                  [disabled]="releaseReasonsSaving"
+                >
+                  新增理由
+                </button>
+                <p
+                  class="release-reason-message"
+                  [class.form-error]="releaseReasonsFailed"
+                  *ngIf="releaseReasonsMessage"
+                  role="status"
+                >
+                  {{ releaseReasonsMessage }}
+                </p>
+              </div>
+            </article>
+          </ng-container>
+          <ng-container *ngIf="settingsTab === 'notification'">
+            <article class="panel info-card alert-settings-card">
+              <span><mat-icon>volume_up</mat-icon></span>
+              <div>
+                <div class="alert-setting-heading">
+                  <h3>異常警報聲音</h3>
+                  <label class="switch"
+                    ><input
+                      type="checkbox"
+                      aria-label="啟用警報聲音"
+                      [ngModel]="soundEnabled"
+                      (ngModelChange)="
+                        setAlertEnabled('alarms.sound_enabled', $event)
+                      "
+                      [disabled]="alertSettingsSaving" /><span></span
+                  ></label>
+                </div>
+                <p>
+                  {{ soundEnabled ? "已啟用" : "已關閉" }} · 異常持續時，每
+                  {{ soundIntervalSeconds }} 秒播放一次。
+                </p>
+                <div class="alarm-interval-setting">
+                  <label
+                    >警報聲間隔（秒）<input
+                      type="number"
+                      min="1"
+                      max="300"
+                      step="1"
+                      [(ngModel)]="pendingSoundIntervalSeconds"
+                      [disabled]="alertSettingsSaving" /></label
+                  ><button
+                    class="secondary-button"
+                    (click)="saveSoundInterval()"
+                    [disabled]="alertSettingsSaving"
+                  >
+                    儲存間隔
+                  </button>
+                </div>
+                <p>
+                  與儀錶板刷新頻率獨立；偵測到全部恢復正常、關閉聲音或登出後停止。
+                </p>
+                <button
+                  class="test-button"
+                  (click)="testSound()"
+                  [disabled]="!soundEnabled || alertSettingsSaving"
+                >
+                  <mat-icon>volume_up</mat-icon>測試聲音
                 </button>
               </div>
-              <p *ngIf="databaseState === 'browser'">
-                清理功能需以 Electron 桌面版啟動。
-              </p>
-              <p
-                *ngIf="databaseCleanupMessage"
-                class="database-cleanup-result"
-                [class.database-error]="databaseCleanupFailed"
-                role="status"
-              >
-                {{ databaseCleanupMessage }}
-              </p>
-            </div>
-          </article>
-          <article class="panel info-card settings-edit-card">
-            <span><mat-icon>dns</mat-icon></span>
-            <div>
-              <h3>API 資料端點</h3>
-              <p>Live 模式每次讀取成功後立即寫入 sensor_readings。</p>
-              <input
-                [(ngModel)]="appSettings['api.data_url']"
-                placeholder="http://127.0.0.1:8080/api/data"
-              /><button
-                class="secondary-button"
-                (click)="
-                  saveDatabaseSetting(
-                    'api.data_url',
-                    appSettings['api.data_url']
-                  )
-                "
-              >
-                儲存端點
-              </button>
-            </div>
-          </article>
-          <article class="panel info-card settings-edit-card">
-            <span><mat-icon>key</mat-icon></span>
-            <div>
-              <h3>EC62 API Token</h3>
-              <p>需要驗證時會以 X-EC62-Token Header 傳送。</p>
-              <input
-                type="password"
-                [(ngModel)]="appSettings['api.auth_token']"
-                placeholder="未啟用驗證可留空"
-              /><button
-                class="secondary-button"
-                (click)="
-                  saveDatabaseSetting(
-                    'api.auth_token',
-                    appSettings['api.auth_token']
-                  )
-                "
-              >
-                儲存 Token
-              </button>
-            </div>
-          </article>
-          <article class="panel info-card settings-edit-card">
-            <span><mat-icon>storage</mat-icon></span>
-            <div>
-              <h3>資料模式</h3>
-              <p>Mock 也會寫入 SQLite，方便先測試報表。</p>
-              <select [(ngModel)]="appSettings['data.mode']">
-                <option value="mock">MOCK · 模擬資料</option>
-                <option value="live">LIVE · 正式 API</option></select
-              ><button
-                class="secondary-button"
-                (click)="
-                  saveDatabaseSetting('data.mode', appSettings['data.mode'])
-                "
-              >
-                儲存模式
-              </button>
-            </div>
-          </article>
-          <article class="panel info-card settings-edit-card">
-            <span><mat-icon>refresh</mat-icon></span>
-            <div>
-              <h3>更新頻率</h3>
-              <p>Dashboard 背景同步與寫入間隔。</p>
-              <select
-                [(ngModel)]="appSettings['api.poll_interval_ms']"
-                aria-label="更新頻率"
-              >
-                <option
-                  *ngFor="let seconds of refreshOptions"
-                  [ngValue]="seconds * 1000"
-                >
-                  {{ seconds }} 秒
-                </option></select
-              ><button
-                class="secondary-button"
-                (click)="
-                  saveDatabaseSetting(
-                    'api.poll_interval_ms',
-                    appSettings['api.poll_interval_ms']
-                  )
-                "
-              >
-                儲存頻率
-              </button>
-            </div>
-          </article>
-          <article class="panel info-card settings-edit-card">
-            <span><mat-icon>table_view</mat-icon></span>
-            <div>
-              <h3>報表保留天數</h3>
-              <p>每次匯入後自動清理超過期限的歷史資料。</p>
-              <input
-                type="number"
-                min="1"
-                [(ngModel)]="appSettings['report.retention_days']"
-              /><button
-                class="secondary-button"
-                (click)="
-                  saveDatabaseSetting(
-                    'report.retention_days',
-                    appSettings['report.retention_days']
-                  )
-                "
-              >
-                儲存天數
-              </button>
-            </div>
-          </article>
-          <article
-            class="panel info-card settings-edit-card release-reasons-card"
-          >
-            <span><mat-icon>warning</mat-icon></span>
-            <div>
-              <h3>解除理由設定</h3>
-              <p>
-                解除警報時可從下拉選單選擇；未設定時使用者需選「其他」自行填寫。已使用過的理由不能刪除，但可改名。
-              </p>
-              <ul class="release-reason-list" *ngIf="releaseReasons.length">
-                <li
-                  *ngFor="let item of releaseReasons"
-                  [class.editing]="renamingReleaseReason === item"
-                >
-                  <ng-container
-                    *ngIf="renamingReleaseReason === item; else reasonChip"
-                  >
-                    <input
-                      class="release-reason-rename"
-                      [(ngModel)]="renameReleaseReasonText"
-                      [maxlength]="releaseReasonMaxLength"
-                      [attr.aria-label]="'改名解除理由 ' + item"
-                      (keydown.enter)="confirmRenameReleaseReason()"
-                      (keydown.escape)="cancelRenameReleaseReason()"
-                      [disabled]="releaseReasonsSaving"
-
-                    /><button
-                      type="button"
-                      class="icon-button"
-                      (click)="confirmRenameReleaseReason()"
-                      [disabled]="releaseReasonsSaving"
-                      aria-label="儲存名稱"
-                      title="儲存名稱"
-                    >
-                      <mat-icon>check_circle</mat-icon></button
-                    ><button
-                      type="button"
-                      class="icon-button"
-                      (click)="cancelRenameReleaseReason()"
-                      [disabled]="releaseReasonsSaving"
-                      aria-label="取消改名"
-                      title="取消改名"
-                    >
-                      <mat-icon>close</mat-icon>
-                    </button>
-                  </ng-container>
-                  <ng-template #reasonChip>
-                    <span>{{ item }}</span
-                    ><small
-                      class="release-reason-count"
-                      *ngIf="releaseReasonUseCount(item)"
-                      [title]="'已使用 ' + releaseReasonUseCount(item) + ' 次'"
-                      >{{ releaseReasonUseCount(item) }}</small
-                    ><button
-                      type="button"
-                      class="icon-button"
-                      (click)="startRenameReleaseReason(item)"
-                      [disabled]="releaseReasonsSaving"
-                      [attr.aria-label]="'改名解除理由 ' + item"
-                      title="改名"
-                    >
-                      <mat-icon>edit</mat-icon></button
-                    ><button
-                      type="button"
-                      class="icon-button"
-                      (click)="removeReleaseReason(item)"
-                      [disabled]="
-                        releaseReasonsSaving || releaseReasonUseCount(item) > 0
+            </article>
+            <article class="panel info-card alert-settings-card">
+              <span><mat-icon>notifications_active</mat-icon></span>
+              <div>
+                <div class="alert-setting-heading">
+                  <h3>桌面異常通知</h3>
+                  <label class="switch"
+                    ><input
+                      type="checkbox"
+                      aria-label="啟用桌面通知"
+                      [ngModel]="notificationsEnabled"
+                      (ngModelChange)="
+                        setAlertEnabled('notifications.enabled', $event)
                       "
-                      [attr.aria-label]="'刪除解除理由 ' + item"
-                      [title]="
-                        releaseReasonUseCount(item)
-                          ? '已有解除紀錄，不能刪除，可改名'
-                          : '刪除'
-                      "
-                    >
-                      <mat-icon>delete</mat-icon>
-                    </button>
-                  </ng-template>
-                </li>
-              </ul>
-              <p class="release-reason-empty" *ngIf="!releaseReasons.length">
-                尚未設定任何解除理由。
-              </p>
-              <input
-                [(ngModel)]="newReleaseReason"
-                [maxlength]="releaseReasonMaxLength"
-                placeholder="例如：設備維修中、除霜作業"
-                aria-label="新增解除理由"
-                (keydown.enter)="addReleaseReason()"
-                [disabled]="releaseReasonsSaving"
-              /><button
-                class="secondary-button"
-                (click)="addReleaseReason()"
-                [disabled]="releaseReasonsSaving"
-              >
-                新增理由
-              </button>
-              <p
-                class="release-reason-message"
-                [class.form-error]="releaseReasonsFailed"
-                *ngIf="releaseReasonsMessage"
-                role="status"
-              >
-                {{ releaseReasonsMessage }}
-              </p>
-            </div>
-          </article>
-          <article
-            class="panel info-card font-size-card"
-            [attr.aria-busy]="fontSizeSaving"
-          >
-            <span><mat-icon>edit</mat-icon></span>
-            <div>
-              <h3>字級設定</h3>
-              <p>各區域可分開調整，選擇後立即套用並儲存。</p>
-              <div class="font-size-fields">
-                <label *ngFor="let area of fontSizeAreas"
-                  >{{ area.label
-                  }}<select
-                    [ngModel]="fontSizes[area.key]"
-                    (ngModelChange)="setFontSize(area.key, $event)"
-                    [disabled]="fontSizeSaving"
-                  >
-                    <option
-                      *ngFor="let level of area.levels"
-                      [ngValue]="level.percent"
-                    >
-                      {{ level.label }}
-                    </option>
-                  </select></label
+                      [disabled]="alertSettingsSaving" /><span></span
+                  ></label>
+                </div>
+                <p>
+                  {{ notificationsEnabled ? "已啟用" : "已關閉" }} ·
+                  同一異常不會每次刷新重複通知。
+                </p>
+                <button
+                  class="test-button"
+                  (click)="testNotification()"
+                  [disabled]="!notificationsEnabled || alertSettingsSaving"
                 >
+                  <mat-icon>notifications_active</mat-icon>測試通知
+                </button>
+                <p>需保持程式執行；Windows 勿擾或關閉通知可能阻擋顯示。</p>
               </div>
-              <button
-                type="button"
-                class="secondary-button"
-                (click)="resetFontSizes()"
-                [disabled]="fontSizeSaving || fontSizesAreDefault"
-              >
-                全部恢復標準
-              </button>
-              <p
-                class="font-size-message"
-                [class.form-error]="fontSizeFailed"
-                *ngIf="fontSizeMessage"
-                role="status"
-              >
-                {{ fontSizeMessage }}
-              </p>
+            </article>
+            <article class="panel info-card alert-settings-card">
+              <span><mat-icon>notifications_active</mat-icon></span>
+              <div>
+                <div class="alert-setting-heading">
+                  <h3>快照提醒</h3>
+                  <label class="switch"
+                    ><input
+                      type="checkbox"
+                      aria-label="啟用快照提醒"
+                      [ngModel]="snapshotReminderEnabled"
+                      (ngModelChange)="
+                        setAlertEnabled(
+                          'notifications.snapshot_stale_enabled',
+                          $event
+                        )
+                      "
+                      [disabled]="alertSettingsSaving" /><span></span
+                  ></label>
+                </div>
+                <p>
+                  {{ snapshotReminderEnabled ? "已啟用" : "已關閉" }} ·
+                  開啟後，設備資料快照過期時顯示提醒。
+                </p>
+                <p>預設關閉，切換後自動儲存。</p>
+              </div>
+            </article>
+            <div
+              class="alert-settings-feedback"
+              *ngIf="testMessage || alertMessage || soundMessage"
+              role="status"
+            >
+              <p *ngIf="testMessage">{{ testMessage }}</p>
+              <p *ngIf="alertMessage" class="form-error">{{ alertMessage }}</p>
+              <p *ngIf="soundMessage" class="form-error">{{ soundMessage }}</p>
             </div>
-          </article>
-          <article class="panel info-card dashboard-status-setting">
-            <span><mat-icon>notifications_active</mat-icon></span>
-            <div>
-              <h3>儀錶板警報狀態列</h3>
-              <p>此設定同樣保存於 SQLite。</p>
-              <b>{{ showDashboardStatus ? "目前開啟" : "目前關閉" }}</b>
-            </div>
-            <label class="switch"
-              ><input
-                type="checkbox"
-                [(ngModel)]="showDashboardStatus"
-                (change)="
-                  saveDatabaseSetting(
-                    'dashboard.show_status',
-                    showDashboardStatus
-                  )
-                " /><span></span
-            ></label>
-          </article>
+          </ng-container>
         </section>
       </ng-container>
     </main>

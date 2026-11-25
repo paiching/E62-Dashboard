@@ -14,7 +14,7 @@
   --amber: #c77d10;
   --red: #c43d4e;
   --shadow: 0 8px 24px rgba(17, 36, 61, 0.08);
-  /* Font scale per area; written from 系統設定 > 字級設定. */
+  /* Font scale per area; written from 系統設定 > 主題設定 > 字級設定. */
   --font-scale-general: 1;
   --font-scale-topbar: 1;
   --font-scale-cards: 1;

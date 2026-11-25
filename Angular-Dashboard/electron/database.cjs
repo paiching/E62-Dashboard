@@ -70,6 +70,36 @@ function initializeDatabase(userDataPath, forceMockMode = false) {
   return dbPath;
 }
 
+// Keep in sync with src/app/branding.ts.
+const DEFAULT_TITLES = {
+  title: "Edge Dashboard",
+  subtitle: "C62 溫度感應器監控系統",
+};
+const TITLE_MAX_LENGTH = 30;
+const SUBTITLE_MAX_LENGTH = 40;
+const LOGO_MAX_LENGTH = 1_000_000;
+function normalizeTitles(value) {
+  const text = (input) =>
+    typeof input === "string" ? input.trim().replace(/\s+/g, " ") : null;
+  const title = text(value?.title);
+  const subtitle = text(value?.subtitle);
+  if (!title) throw new Error("請輸入專案名稱");
+  if (title.length > TITLE_MAX_LENGTH)
+    throw new Error(`專案名稱不可超過 ${TITLE_MAX_LENGTH} 個字`);
+  if (subtitle === null) throw new Error("次標必須為文字");
+  if (subtitle.length > SUBTITLE_MAX_LENGTH)
+    throw new Error(`次標不可超過 ${SUBTITLE_MAX_LENGTH} 個字`);
+  return { title, subtitle };
+}
+function validateLogo(value) {
+  if (value === "") return;
+  if (typeof value !== "string" || value.length > LOGO_MAX_LENGTH)
+    throw new Error("Logo 圖檔過大或格式不正確");
+  // "iVBORw0KGgo" is the base64 of the PNG signature.
+  if (!/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]+={0,2}$/.test(value))
+    throw new Error("Logo 格式不正確");
+}
+
 function seedDatabase() {
   const settings = [
     ["data.mode", "mock", "api", "mock 或 live"],
@@ -85,6 +115,8 @@ function seedDatabase() {
       "display",
       "各區域字級百分比",
     ],
+    ["ui.titles", DEFAULT_TITLES, "display", "專案名稱與次標"],
+    ["ui.logo", "", "display", "Logo（PNG data URL，空白為預設）"],
     ["notifications.enabled", true, "notification", "允許桌面通知"],
     [
       "notifications.snapshot_stale_enabled",
@@ -414,6 +446,8 @@ function saveSetting(token, key, value) {
   )
     throw new Error("警報聲間隔需為 1～300 的整數秒");
   if (key === "ui.font_sizes") value = normalizeFontSizes(value);
+  if (key === "ui.titles") value = normalizeTitles(value);
+  if (key === "ui.logo") validateLogo(value);
   if (
     !database.prepare("SELECT 1 AS ok FROM app_settings WHERE key=?").get(key)
   )

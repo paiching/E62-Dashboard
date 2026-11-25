@@ -197,6 +197,8 @@ erDiagram
 | `report.retention_days` | number  | `365`                            | 歷史資料保留天數，最少 1     |
 | `dashboard.show_status` | boolean | `true`                           | Header 狀態顯示              |
 | `ui.default_view`       | string  | `overview`                       | 登入後預設畫面               |
+| `ui.titles`             | object  | `Edge Dashboard`／`C62 溫度感應器監控系統` | `title` 專案名稱、`subtitle` 次標 |
+| `ui.logo`               | string  | 空白                             | PNG data URL，空白為預設標誌 |
 | `notifications.enabled` | boolean | `true`                           | 桌面通知開關                 |
 
 設定只允許更新既有 key。`api.auth_token` 目前以 JSON 明文存在本機 SQLite；正式版若有秘密管理要求，建議改存 Windows Credential Manager／DPAPI。
