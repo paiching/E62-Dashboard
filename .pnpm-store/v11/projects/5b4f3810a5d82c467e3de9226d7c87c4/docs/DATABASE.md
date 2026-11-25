@@ -197,8 +197,13 @@ erDiagram
 | `report.retention_days` | number  | `365`                            | 歷史資料保留天數，最少 1     |
 | `dashboard.show_status` | boolean | `true`                           | Header 狀態顯示              |
 | `ui.default_view`       | string  | `overview`                       | 登入後預設畫面               |
-| `ui.titles`             | object  | `Edge Dashboard`／`C62 溫度感應器監控系統` | `title` 專案名稱、`subtitle` 次標 |
-| `ui.logo`               | string  | 空白                             | PNG data URL，空白為預設標誌 |
+| `ui.titles`             | object  | `EdgeBox`／`感應器監控系統` | `title` 專案名稱、`subtitle` 次標 |
+| `ui.logo`               | string  | 空白                             | PNG data URL，空白為預設 EdgeBox 標誌 |
+| `ui.sidebar_logo`       | string  | 空白                             | 側邊選單 PNG data URL，空白沿用 `ui.logo` |
+| `ui.logo_style`         | string  | `inverse`                        | 側邊選單 Logo：`inverse` 暗色版、`original` 原色、`light` 白底 |
+| `ui.logo_size`          | string  | `standard`                       | 側邊選單 Logo 大小：`standard`、`large`、`xlarge` |
+| `ui.card_layouts`       | object  | `{}`                             | 各設定分頁的卡片排列（每欄的卡片代號） |
+| `ui.login_background`   | string  | 空白                             | JPEG data URL，空白為預設背景 |
 | `notifications.enabled` | boolean | `true`                           | 桌面通知開關                 |
 
 設定只允許更新既有 key。`api.auth_token` 目前以 JSON 明文存在本機 SQLite；正式版若有秘密管理要求，建議改存 Windows Credential Manager／DPAPI。

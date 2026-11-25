@@ -1,10 +1,11 @@
-<main class="login-page" *ngIf="!session">
+<main
+  class="login-page"
+  *ngIf="!session"
+  [style.background-image]="loginBackground"
+>
   <section class="login-card login-card-compact">
     <div class="login-brand">
-      <img *ngIf="logo; else loginBadge" [src]="logo" alt="Logo" /><ng-template
-        #loginBadge
-        ><span>C62</span></ng-template
-      >
+      <img [src]="logoUrl" alt="Logo" />
       <div>
         <h1>{{ brandTitles.title }}</h1>
         <p *ngIf="brandTitles.subtitle">{{ brandTitles.subtitle }}</p>
@@ -59,15 +60,12 @@
     <div class="sidebar-brand-row">
       <button
         class="sidebar-logo"
-        [class.has-image]="logo"
+        [ngClass]="['logo-' + logoStyle, 'logo-size-' + logoSize]"
         type="button"
         (click)="toggleSidebar()"
         aria-label="展開或收合選單"
       >
-        <img *ngIf="logo; else sidebarBadge" [src]="logo" alt="" /><ng-template
-          #sidebarBadge
-          >C62</ng-template
-        >
+        <img [src]="sidebarLogoUrl" alt="" />
       </button>
       <div class="sidebar-brand-copy">
         <strong [title]="brandTitles.title">{{ brandTitles.title }}</strong
@@ -783,34 +781,44 @@
       </ng-container>
 
       <ng-container *ngIf="view === 'settings'">
-        <div
-          class="settings-tabs"
-          role="tablist"
-          aria-label="設定分類"
-          (keydown)="onSettingsTabKeydown($event)"
-        >
-          <button
-            *ngFor="let tab of settingsTabs"
-            type="button"
-            role="tab"
-            [id]="'settings-tab-' + tab.key"
-            aria-controls="settings-panel"
-            [class.active]="settingsTab === tab.key"
-            [attr.aria-selected]="settingsTab === tab.key"
-            [attr.tabindex]="settingsTab === tab.key ? 0 : -1"
-            (click)="selectSettingsTab(tab.key)"
+        <div class="settings-tab-bar">
+          <div
+            class="settings-tabs"
+            role="tablist"
+            aria-label="設定分類"
+            (keydown)="onSettingsTabKeydown($event)"
           >
-            <mat-icon [svgIcon]="tab.icon"></mat-icon
-            ><span>{{ tab.label }}</span
-            ><mat-icon
-              class="settings-tab-issue"
-              *ngIf="settingsTabIssue(tab.key) as issue"
-              svgIcon="error"
-              role="img"
-              aria-hidden="false"
-              [attr.aria-label]="issue"
-              [attr.title]="issue"
-            ></mat-icon>
+            <button
+              *ngFor="let tab of settingsTabs"
+              type="button"
+              role="tab"
+              [id]="'settings-tab-' + tab.key"
+              aria-controls="settings-panel"
+              [class.active]="settingsTab === tab.key"
+              [attr.aria-selected]="settingsTab === tab.key"
+              [attr.tabindex]="settingsTab === tab.key ? 0 : -1"
+              (click)="selectSettingsTab(tab.key)"
+            >
+              <mat-icon [svgIcon]="tab.icon"></mat-icon
+              ><span>{{ tab.label }}</span
+              ><mat-icon
+                class="settings-tab-issue"
+                *ngIf="settingsTabIssue(tab.key) as issue"
+                svgIcon="error"
+                role="img"
+                aria-hidden="false"
+                [attr.aria-label]="issue"
+                [attr.title]="issue"
+              ></mat-icon>
+            </button>
+          </div>
+          <button
+            type="button"
+            class="card-layout-reset"
+            *ngIf="cardLayouts[settingsTab]"
+            (click)="resetCardLayout(settingsTab)"
+          >
+            <mat-icon>restart_alt</mat-icon>恢復預設排列
           </button>
         </div>
         <div
@@ -821,6 +829,8 @@
           {{ settingsMessage }}
         </div>
         <section
+          [appMasonry]="cardLayouts[settingsTab]"
+          (arranged)="saveCardLayout(settingsTab, $event)"
           id="settings-panel"
           class="settings-cards"
           role="tabpanel"
@@ -828,53 +838,190 @@
         >
           <ng-container *ngIf="settingsTab === 'theme'">
             <article
+              data-card="login-logo"
               class="panel info-card logo-card"
-              [attr.aria-busy]="logoSaving"
+              [attr.aria-busy]="brandImages.logo.saving"
             >
               <span><mat-icon>image</mat-icon></span>
               <div>
-                <h3>Logo 設定</h3>
-                <p>顯示於登入頁與側邊選單，選擇後立即套用並儲存。</p>
+                <h3>登入頁 Logo</h3>
+                <p>顯示於登入頁，選擇後立即套用並儲存。</p>
                 <div class="logo-preview">
-                  <img *ngIf="logo; else logoBadge" [src]="logo" alt="目前 Logo" />
-                  <ng-template #logoBadge><b>C62</b></ng-template>
+                  <img [src]="logoUrl" alt="登入頁 Logo 預覽" />
                 </div>
                 <input
                   #logoInput
                   type="file"
                   hidden
-                  [accept]="logoFileTypes"
-                  (change)="selectLogo($event)"
+                  [accept]="imageFileTypes"
+                  (change)="selectBrandImage('logo', $event)"
                 />
                 <div class="brand-actions">
                   <button
                     type="button"
                     class="secondary-button"
                     (click)="logoInput.click()"
-                    [disabled]="logoSaving"
+                    [disabled]="brandImages.logo.saving"
                   >
-                    {{ logoSaving ? "處理中…" : "選擇圖片" }}
+                    {{ brandImages.logo.saving ? "處理中…" : "選擇圖片" }}
                   </button>
                   <button
                     type="button"
                     class="secondary-button"
-                    (click)="resetLogo()"
-                    [disabled]="logoSaving || !logo"
+                    (click)="resetBrandImage('logo')"
+                    [disabled]="
+                      brandImages.logo.saving || !brandImages.logo.url
+                    "
                   >
                     恢復預設
                   </button>
                 </div>
-                <p>支援 PNG、JPG、WebP，5 MB 以內；建議使用透明背景 PNG。</p>
+                <p>支援 PNG、JPG、WebP，5 MB 以內；適合深色 Logo。</p>
                 <p
-                  *ngIf="logoMessage"
-                  [class.form-error]="logoFailed"
+                  *ngIf="brandImages.logo.message as message"
+                  [class.form-error]="brandImages.logo.failed"
                   role="status"
                 >
-                  {{ logoMessage }}
+                  {{ message }}
                 </p>
               </div>
             </article>
             <article
+              data-card="sidebar-logo"
+              class="panel info-card logo-card"
+              [attr.aria-busy]="brandImages.sidebar.saving"
+            >
+              <span><mat-icon>image</mat-icon></span>
+              <div>
+                <h3>側邊選單 Logo</h3>
+                <p>未上傳時沿用登入頁 Logo。</p>
+                <div class="logo-preview is-dark">
+                  <div
+                    class="logo-tile"
+                    [ngClass]="['logo-' + logoStyle, 'logo-size-' + logoSize]"
+                  >
+                    <img [src]="sidebarLogoUrl" alt="側邊選單 Logo 預覽" />
+                  </div>
+                </div>
+                <label class="logo-style-field"
+                  >顯示大小<select
+                    [ngModel]="logoSize"
+                    (ngModelChange)="setLogoSize($event)"
+                    [disabled]="brandImages.sidebar.saving"
+                  >
+                    <option *ngFor="let size of logoSizes" [ngValue]="size.key">
+                      {{ size.label }}
+                    </option>
+                  </select></label
+                >
+                <label class="logo-style-field"
+                  >顯示樣式<select
+                    [ngModel]="logoStyle"
+                    (ngModelChange)="setLogoStyle($event)"
+                    [disabled]="brandImages.sidebar.saving"
+                  >
+                    <option
+                      *ngFor="let style of logoStyles"
+                      [ngValue]="style.key"
+                    >
+                      {{ style.label }}
+                    </option>
+                  </select></label
+                >
+                <input
+                  #sidebarLogoInput
+                  type="file"
+                  hidden
+                  [accept]="imageFileTypes"
+                  (change)="selectBrandImage('sidebar', $event)"
+                />
+                <div class="brand-actions">
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="sidebarLogoInput.click()"
+                    [disabled]="brandImages.sidebar.saving"
+                  >
+                    {{ brandImages.sidebar.saving ? "處理中…" : "選擇圖片" }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="resetBrandImage('sidebar')"
+                    [disabled]="
+                      brandImages.sidebar.saving || sidebarLogoIsDefault
+                    "
+                  >
+                    恢復預設
+                  </button>
+                </div>
+                <p>支援 PNG、JPG、WebP，5 MB 以內；建議使用透明背景的淺色 Logo。</p>
+                <p
+                  *ngIf="brandImages.sidebar.message as message"
+                  [class.form-error]="brandImages.sidebar.failed"
+                  role="status"
+                >
+                  {{ message }}
+                </p>
+              </div>
+            </article>
+            <article
+              data-card="login-background"
+              class="panel info-card logo-card"
+              [attr.aria-busy]="brandImages.background.saving"
+            >
+              <span><mat-icon>wallpaper</mat-icon></span>
+              <div>
+                <h3>登入背景設定</h3>
+                <p>登入頁的背景圖片，選擇後立即套用並儲存。</p>
+                <div
+                  class="login-background-preview"
+                  role="img"
+                  aria-label="目前登入背景"
+                  [style.background-image]="loginBackground"
+                ></div>
+                <input
+                  #backgroundInput
+                  type="file"
+                  hidden
+                  [accept]="imageFileTypes"
+                  (change)="selectBrandImage('background', $event)"
+                />
+                <div class="brand-actions">
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="backgroundInput.click()"
+                    [disabled]="brandImages.background.saving"
+                  >
+                    {{
+                      brandImages.background.saving ? "處理中…" : "選擇圖片"
+                    }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    (click)="resetBrandImage('background')"
+                    [disabled]="
+                      brandImages.background.saving ||
+                      !brandImages.background.url
+                    "
+                  >
+                    恢復預設
+                  </button>
+                </div>
+                <p>支援 PNG、JPG、WebP，20 MB 以內；建議 1920 × 1080 橫式圖片。</p>
+                <p
+                  *ngIf="brandImages.background.message as message"
+                  [class.form-error]="brandImages.background.failed"
+                  role="status"
+                >
+                  {{ message }}
+                </p>
+              </div>
+            </article>
+            <article
+              data-card="titles"
               class="panel info-card settings-edit-card brand-titles-card"
               [attr.aria-busy]="brandTitlesSaving"
             >
@@ -925,6 +1072,7 @@
               </div>
             </article>
             <article
+              data-card="font-size"
               class="panel info-card font-size-card"
               [attr.aria-busy]="fontSizeSaving"
             >
@@ -967,7 +1115,7 @@
                 </p>
               </div>
             </article>
-            <article class="panel info-card dashboard-status-setting">
+            <article data-card="status-bar" class="panel info-card dashboard-status-setting">
               <span><mat-icon>notifications_active</mat-icon></span>
               <div>
                 <h3>儀錶板警報狀態列</h3>
@@ -988,7 +1136,7 @@
             </article>
           </ng-container>
           <ng-container *ngIf="settingsTab === 'data'">
-            <article class="panel info-card settings-edit-card">
+            <article data-card="data-mode" class="panel info-card settings-edit-card">
               <span><mat-icon>storage</mat-icon></span>
               <div>
                 <h3>資料模式</h3>
@@ -1006,7 +1154,7 @@
                 </button>
               </div>
             </article>
-            <article class="panel info-card settings-edit-card">
+            <article data-card="poll-interval" class="panel info-card settings-edit-card">
               <span><mat-icon>refresh</mat-icon></span>
               <div>
                 <h3>更新頻率</h3>
@@ -1034,7 +1182,7 @@
                 </button>
               </div>
             </article>
-            <article class="panel info-card settings-edit-card">
+            <article data-card="api-url" class="panel info-card settings-edit-card">
               <span><mat-icon>dns</mat-icon></span>
               <div>
                 <h3>API 資料端點</h3>
@@ -1055,7 +1203,7 @@
                 </button>
               </div>
             </article>
-            <article class="panel info-card settings-edit-card">
+            <article data-card="api-token" class="panel info-card settings-edit-card">
               <span><mat-icon>key</mat-icon></span>
               <div>
                 <h3>EC62 API Token</h3>
@@ -1080,6 +1228,7 @@
           </ng-container>
           <ng-container *ngIf="settingsTab === 'database'">
             <article
+              data-card="database"
               class="panel info-card database-card"
               [attr.aria-busy]="databaseCleaning"
             >
@@ -1140,7 +1289,7 @@
                 </p>
               </div>
             </article>
-            <article class="panel info-card settings-edit-card">
+            <article data-card="retention" class="panel info-card settings-edit-card">
               <span><mat-icon>table_view</mat-icon></span>
               <div>
                 <h3>報表保留天數</h3>
@@ -1164,7 +1313,7 @@
             </article>
           </ng-container>
           <ng-container *ngIf="settingsTab === 'alarm'">
-            <article class="panel info-card default-limits-card">
+            <article data-card="default-limits" class="panel info-card default-limits-card">
               <span><mat-icon>settings</mat-icon></span>
               <div>
                 <h3>預設溫度上下限</h3>
@@ -1206,6 +1355,7 @@
               </div>
             </article>
             <article
+              data-card="release-reasons"
               class="panel info-card settings-edit-card release-reasons-card"
             >
               <span><mat-icon>warning</mat-icon></span>
@@ -1315,7 +1465,7 @@
             </article>
           </ng-container>
           <ng-container *ngIf="settingsTab === 'notification'">
-            <article class="panel info-card alert-settings-card">
+            <article data-card="alarm-sound" class="panel info-card alert-settings-card">
               <span><mat-icon>volume_up</mat-icon></span>
               <div>
                 <div class="alert-setting-heading">
@@ -1364,7 +1514,7 @@
                 </button>
               </div>
             </article>
-            <article class="panel info-card alert-settings-card">
+            <article data-card="desktop-notification" class="panel info-card alert-settings-card">
               <span><mat-icon>notifications_active</mat-icon></span>
               <div>
                 <div class="alert-setting-heading">
@@ -1394,7 +1544,7 @@
                 <p>需保持程式執行；Windows 勿擾或關閉通知可能阻擋顯示。</p>
               </div>
             </article>
-            <article class="panel info-card alert-settings-card">
+            <article data-card="snapshot-reminder" class="panel info-card alert-settings-card">
               <span><mat-icon>notifications_active</mat-icon></span>
               <div>
                 <div class="alert-setting-heading">
@@ -1422,6 +1572,7 @@
             </article>
             <div
               class="alert-settings-feedback"
+              data-masonry-full
               *ngIf="testMessage || alertMessage || soundMessage"
               role="status"
             >

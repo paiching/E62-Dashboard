@@ -34,14 +34,28 @@ import {
   ReportRow,
 } from "./database.service";
 import {
+  BRAND_IMAGES,
   BRAND_SUBTITLE_MAX_LENGTH,
   BRAND_TITLE_MAX_LENGTH,
+  BrandImage,
+  BrandImageKey,
   BrandTitles,
   DEFAULT_BRAND_TITLES,
-  LOGO_FILE_TYPES,
+  DEFAULT_LOGO_SIZE,
+  DEFAULT_LOGO_STYLE,
+  DEFAULT_LOGO_URL,
+  IMAGE_FILE_TYPES,
+  LOGO_SIZES,
+  LOGO_STYLES,
+  LogoSize,
+  LogoStyle,
+  emptyBrandImage,
+  isOpaqueImage,
+  parseBrandImage,
   parseBrandTitles,
-  parseLogo,
-  readLogoFile,
+  parseLogoSize,
+  parseLogoStyle,
+  readBrandImage,
 } from "./branding";
 import {
   DEFAULT_FONT_SIZES,
@@ -56,6 +70,8 @@ import {
   registerDashboardMaterialIcons,
 } from "./material-icons";
 
+import { MasonryDirective } from "./masonry.directive";
+
 interface NavItem {
   key: ViewKey;
   label: string;
@@ -63,6 +79,8 @@ interface NavItem {
 }
 
 type SettingsTab = "theme" | "data" | "database" | "alarm" | "notification";
+/** Card ids per column for each settings tab that has been rearranged. */
+type CardLayouts = Partial<Record<SettingsTab, string[][]>>;
 
 const RELEASE_REASON_OTHER = "__other__";
 const RELEASE_REASON_MAX_LENGTH = 60;
@@ -75,7 +93,13 @@ interface PendingLimitChange {
 @Component({
   selector: "app-root",
   standalone: true,
-  imports: [CommonModule, FormsModule, MatIconModule, MaterialSvgIconDirective],
+  imports: [
+    CommonModule,
+    FormsModule,
+    MasonryDirective,
+    MatIconModule,
+    MaterialSvgIconDirective,
+  ],
   templateUrl: "./app.component.html",
 })
 export class AppComponent implements OnInit, OnDestroy {
@@ -147,6 +171,8 @@ export class AppComponent implements OnInit, OnDestroy {
     { key: "notification", label: "通知設定", icon: "notifications_active" },
   ];
   settingsTab: SettingsTab = "theme";
+  cardLayouts: CardLayouts = {};
+  private cardLayoutSaves = 0;
   username = localStorage.getItem("edge-angular-last-username") ?? "";
   password = "";
   loginError = "";
@@ -162,16 +188,36 @@ export class AppComponent implements OnInit, OnDestroy {
   fontSizeFailed = false;
   readonly brandTitleMaxLength = BRAND_TITLE_MAX_LENGTH;
   readonly brandSubtitleMaxLength = BRAND_SUBTITLE_MAX_LENGTH;
-  readonly logoFileTypes = LOGO_FILE_TYPES.join(",");
+  readonly imageFileTypes = IMAGE_FILE_TYPES.join(",");
   brandTitles: BrandTitles = { ...DEFAULT_BRAND_TITLES };
   brandTitlesDraft: BrandTitles = { ...DEFAULT_BRAND_TITLES };
   brandTitlesSaving = false;
   brandTitlesMessage = "";
   brandTitlesFailed = false;
-  logo = "";
-  logoSaving = false;
-  logoMessage = "";
-  logoFailed = false;
+  readonly brandImages: Record<BrandImageKey, BrandImage> = {
+    logo: emptyBrandImage(),
+    sidebar: emptyBrandImage(),
+    background: emptyBrandImage(),
+  };
+  readonly logoStyles = LOGO_STYLES;
+  logoStyle: LogoStyle = DEFAULT_LOGO_STYLE;
+  readonly logoSizes = LOGO_SIZES;
+  logoSize: LogoSize = DEFAULT_LOGO_SIZE;
+  get sidebarLogoIsDefault(): boolean {
+    return (
+      !this.brandImages.sidebar.url &&
+      this.logoStyle === DEFAULT_LOGO_STYLE &&
+      this.logoSize === DEFAULT_LOGO_SIZE
+    );
+  }
+  get sidebarLogoUrl(): string {
+    return this.brandImages.sidebar.url || this.logoUrl;
+  }
+  get logoUrl(): string {
+    return this.brandImages.logo.url || DEFAULT_LOGO_URL;
+  }
+  /** Null keeps the built-in image from dashboard.css. */
+  loginBackground: string | null = null;
   clock = new Date();
   channels = createMockChannels();
   lastUpdated = new Date();
@@ -447,9 +493,49 @@ export class AppComponent implements OnInit, OnDestroy {
     this.testMessage = "";
     this.fontSizeMessage = "";
     this.brandTitlesMessage = "";
-    this.logoMessage = "";
+    this.brandImages.logo.message = "";
+    this.brandImages.sidebar.message = "";
+    this.brandImages.background.message = "";
     this.defaultLimitsMessage = "";
     this.releaseReasonsMessage = "";
+  }
+  resetCardLayout(tab: SettingsTab): Promise<void> {
+    return this.saveCardLayout(tab, undefined);
+  }
+  async saveCardLayout(
+    tab: SettingsTab,
+    columns: string[][] | undefined,
+  ): Promise<void> {
+    const layouts = { ...this.cardLayouts };
+    if (columns) layouts[tab] = columns;
+    else delete layouts[tab];
+    this.cardLayouts = layouts;
+    this.cardLayoutSaves++;
+    const saved = await this.saveDatabaseSetting("ui.card_layouts", layouts);
+    this.cardLayoutSaves--;
+    if (saved) {
+      // The cards already show the result; a banner would push them down.
+      this.settingsMessage = "";
+    } else this.settingsMessage ||= "卡片排列儲存失敗";
+    this.applyCardLayouts();
+  }
+  private applyCardLayouts(): void {
+    // Replies to earlier moves must not undo the ones still being saved.
+    if (this.cardLayoutSaves) return;
+    const stored = this.appSettings["ui.card_layouts"];
+    const layouts: CardLayouts = {};
+    for (const { key } of this.settingsTabs) {
+      const columns = (stored as CardLayouts | null | undefined)?.[key];
+      if (
+        Array.isArray(columns) &&
+        columns.every(
+          (ids) =>
+            Array.isArray(ids) && ids.every((id) => typeof id === "string"),
+        )
+      )
+        layouts[key] = columns;
+    }
+    this.cardLayouts = layouts;
   }
   onSettingsTabKeydown(event: KeyboardEvent): void {
     const count = this.settingsTabs.length;
@@ -608,7 +694,18 @@ export class AppComponent implements OnInit, OnDestroy {
       this.appSettings["dashboard.show_status"] !== false;
     this.fontSizes = parseFontSizes(this.appSettings["ui.font_sizes"]);
     applyFontSizes(this.fontSizes);
-    this.logo = parseLogo(this.appSettings["ui.logo"]);
+    for (const key of ["logo", "sidebar", "background"] as const)
+      this.brandImages[key].url = parseBrandImage(
+        key,
+        this.appSettings[BRAND_IMAGES[key].setting],
+      );
+    this.logoStyle = parseLogoStyle(this.appSettings["ui.logo_style"]);
+    this.logoSize = parseLogoSize(this.appSettings["ui.logo_size"]);
+    this.applyCardLayouts();
+    const background = this.brandImages.background.url;
+    this.loginBackground = background
+      ? `linear-gradient(rgba(5,18,31,.4),rgba(5,18,31,.58)),url("${background}")`
+      : null;
     const titles = parseBrandTitles(this.appSettings["ui.titles"]);
     // Saving another setting must not discard titles still being typed.
     if (
@@ -2275,37 +2372,98 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!this.brandTitlesFailed) this.brandTitlesDraft = { ...titles };
     this.brandTitlesMessage = this.settingsMessage || "標題儲存失敗";
   }
-  async selectLogo(event: Event): Promise<void> {
+  async selectBrandImage(key: BrandImageKey, event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     // Lets the same file be picked again after a failure.
     input.value = "";
-    if (!file || this.logoSaving) return;
-    this.logoSaving = true;
-    this.logoMessage = "";
+    if (file) await this.saveBrandImage(key, () => readBrandImage(key, file));
+  }
+  resetBrandImage(key: BrandImageKey): Promise<void> {
+    return this.saveBrandImage(key, async () => ({ url: "", opaque: false }));
+  }
+  async setLogoStyle(style: LogoStyle): Promise<void> {
+    const previous = this.logoStyle;
+    this.logoStyle = style;
+    if (!(await this.saveLogoOption("ui.logo_style", style)))
+      this.logoStyle = previous;
+  }
+  async setLogoSize(size: LogoSize): Promise<void> {
+    const previous = this.logoSize;
+    this.logoSize = size;
+    if (!(await this.saveLogoOption("ui.logo_size", size)))
+      this.logoSize = previous;
+  }
+  private async saveLogoOption(key: string, value: string): Promise<boolean> {
+    const image = this.brandImages.sidebar;
+    if (image.saving) return false;
+    image.saving = true;
+    image.message = "";
+    image.failed = !(await this.saveDatabaseSetting(key, value));
+    image.saving = false;
+    image.message = this.settingsMessage || "Logo 設定儲存失敗";
+    return !image.failed;
+  }
+  /** Picks a style that keeps the sidebar logo visible after an image change. */
+  private async sidebarStyleAfter(
+    key: "logo" | "sidebar",
+    url: string,
+    opaque: boolean,
+  ): Promise<LogoStyle> {
+    if (key === "sidebar") {
+      if (url) return opaque ? "light" : "original";
+      const followed = this.brandImages.logo.url;
+      return followed && (await isOpaqueImage(followed))
+        ? "light"
+        : DEFAULT_LOGO_STYLE;
+    }
+    if (this.brandImages.sidebar.url) return this.logoStyle;
+    if (!url) return DEFAULT_LOGO_STYLE;
+    return opaque && this.logoStyle === "inverse" ? "light" : this.logoStyle;
+  }
+  private async saveBrandImage(
+    key: BrandImageKey,
+    read: () => Promise<{ url: string; opaque: boolean }>,
+  ): Promise<void> {
+    const image = this.brandImages[key];
+    const { setting, label } = BRAND_IMAGES[key];
+    if (image.saving) return;
+    image.saving = true;
+    image.message = "";
     try {
-      await this.storeLogo(await readLogoFile(file));
+      const { url, opaque } = await read();
+      image.failed = !(await this.saveDatabaseSetting(setting, url));
+      let note = "";
+      if (key !== "background" && !image.failed) {
+        const style = await this.sidebarStyleAfter(key, url, opaque);
+        if (style !== this.logoStyle) {
+          image.failed = !(await this.saveDatabaseSetting(
+            "ui.logo_style",
+            style,
+          ));
+          if (opaque) note = "；此圖沒有透明背景，側邊選單改用白底";
+        }
+        if (
+          key === "sidebar" &&
+          !url &&
+          !image.failed &&
+          this.logoSize !== DEFAULT_LOGO_SIZE
+        )
+          image.failed = !(await this.saveDatabaseSetting(
+            "ui.logo_size",
+            DEFAULT_LOGO_SIZE,
+          ));
+      }
+      image.message = this.settingsMessage
+        ? this.settingsMessage + (image.failed ? "" : note)
+        : `${label}儲存失敗`;
     } catch (error) {
-      this.logoFailed = true;
-      this.logoMessage =
-        error instanceof Error ? error.message : "Logo 儲存失敗";
+      image.failed = true;
+      image.message =
+        error instanceof Error ? error.message : `${label}儲存失敗`;
     } finally {
-      this.logoSaving = false;
+      image.saving = false;
     }
-  }
-  async resetLogo(): Promise<void> {
-    if (this.logoSaving) return;
-    this.logoSaving = true;
-    this.logoMessage = "";
-    try {
-      await this.storeLogo("");
-    } finally {
-      this.logoSaving = false;
-    }
-  }
-  private async storeLogo(logo: string): Promise<void> {
-    this.logoFailed = !(await this.saveDatabaseSetting("ui.logo", logo));
-    this.logoMessage = this.settingsMessage || "Logo 儲存失敗";
   }
 
   async saveDatabaseSetting(key: string, value: unknown): Promise<boolean> {
@@ -2322,6 +2480,11 @@ export class AppComponent implements OnInit, OnDestroy {
           "ui.font_sizes",
           "ui.titles",
           "ui.logo",
+          "ui.sidebar_logo",
+          "ui.logo_size",
+          "ui.logo_style",
+          "ui.login_background",
+          "ui.card_layouts",
         ].includes(key)
       )
         return false;

@@ -72,12 +72,58 @@ function initializeDatabase(userDataPath, forceMockMode = false) {
 
 // Keep in sync with src/app/branding.ts.
 const DEFAULT_TITLES = {
+  title: "EdgeBox",
+  subtitle: "感應器監控系統",
+};
+// Defaults seeded by the first titles release; replaced on startup.
+const LEGACY_TITLES = {
   title: "Edge Dashboard",
   subtitle: "C62 溫度感應器監控系統",
 };
 const TITLE_MAX_LENGTH = 30;
 const SUBTITLE_MAX_LENGTH = 40;
-const LOGO_MAX_LENGTH = 1_000_000;
+// The prefixes end with the base64 of the PNG / JPEG file signature.
+const IMAGE_SETTINGS = {
+  "ui.logo": {
+    label: "Logo ",
+    maxLength: 1_000_000,
+    pattern: /^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]+={0,2}$/,
+  },
+  "ui.sidebar_logo": {
+    label: "Logo ",
+    maxLength: 1_000_000,
+    pattern: /^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]+={0,2}$/,
+  },
+  "ui.login_background": {
+    label: "背景圖",
+    maxLength: 2_000_000,
+    pattern: /^data:image\/jpeg;base64,\/9j\/[A-Za-z0-9+/]+={0,2}$/,
+  },
+};
+const LOGO_STYLES = ["inverse", "original", "light"];
+const LOGO_SIZES = ["standard", "large", "xlarge"];
+const SETTINGS_TABS = ["theme", "data", "database", "alarm", "notification"];
+function normalizeCardLayouts(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("卡片排列格式不正確");
+  const result = {};
+  for (const [tab, columns] of Object.entries(value)) {
+    const ids = Array.isArray(columns) ? columns.flat() : [];
+    if (
+      !SETTINGS_TABS.includes(tab) ||
+      !Array.isArray(columns) ||
+      columns.length < 1 ||
+      columns.length > 20 ||
+      !columns.every(Array.isArray) ||
+      ids.length > 50 ||
+      new Set(ids).size !== ids.length ||
+      !ids.every((id) => typeof id === "string" && /^[a-z-]{1,40}$/.test(id))
+    )
+      throw new Error("卡片排列格式不正確");
+    result[tab] = columns;
+  }
+  return result;
+}
 function normalizeTitles(value) {
   const text = (input) =>
     typeof input === "string" ? input.trim().replace(/\s+/g, " ") : null;
@@ -91,16 +137,22 @@ function normalizeTitles(value) {
     throw new Error(`次標不可超過 ${SUBTITLE_MAX_LENGTH} 個字`);
   return { title, subtitle };
 }
-function validateLogo(value) {
+function validateImage(key, value) {
   if (value === "") return;
-  if (typeof value !== "string" || value.length > LOGO_MAX_LENGTH)
-    throw new Error("Logo 圖檔過大或格式不正確");
-  // "iVBORw0KGgo" is the base64 of the PNG signature.
-  if (!/^data:image\/png;base64,iVBORw0KGgo[A-Za-z0-9+/]+={0,2}$/.test(value))
-    throw new Error("Logo 格式不正確");
+  const { label, maxLength, pattern } = IMAGE_SETTINGS[key];
+  if (
+    typeof value !== "string" ||
+    value.length > maxLength ||
+    !pattern.test(value)
+  )
+    throw new Error(`${label}圖檔過大或格式不正確`);
 }
 
 function seedDatabase() {
+  // Logos uploaded before styles existed keep the white tile they had.
+  const uploadedLogo = database
+    .prepare("SELECT 1 AS ok FROM app_settings WHERE key='ui.logo' AND value_json<>?")
+    .get(json(""));
   const settings = [
     ["data.mode", "mock", "api", "mock 或 live"],
     ["api.data_url", DEFAULT_API_URL, "api", "EC62 API 資料端點"],
@@ -116,7 +168,27 @@ function seedDatabase() {
       "各區域字級百分比",
     ],
     ["ui.titles", DEFAULT_TITLES, "display", "專案名稱與次標"],
-    ["ui.logo", "", "display", "Logo（PNG data URL，空白為預設）"],
+    ["ui.logo", "", "display", "登入頁 Logo（PNG data URL，空白為預設）"],
+    [
+      "ui.sidebar_logo",
+      "",
+      "display",
+      "側邊選單 Logo（PNG data URL，空白沿用登入頁）",
+    ],
+    [
+      "ui.logo_style",
+      uploadedLogo ? "light" : "inverse",
+      "display",
+      "側邊選單 Logo 樣式",
+    ],
+    ["ui.logo_size", "standard", "display", "側邊選單 Logo 大小"],
+    ["ui.card_layouts", {}, "display", "各設定分頁的卡片排列"],
+    [
+      "ui.login_background",
+      "",
+      "display",
+      "登入頁背景（JPEG data URL，空白為預設）",
+    ],
     ["notifications.enabled", true, "notification", "允許桌面通知"],
     [
       "notifications.snapshot_stale_enabled",
@@ -145,6 +217,11 @@ function seedDatabase() {
   settings.forEach(([key, value, category, description]) =>
     insertSetting.run(key, json(value), category, description),
   );
+  database
+    .prepare(
+      "UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key='ui.titles' AND value_json=?",
+    )
+    .run(json(DEFAULT_TITLES), json(LEGACY_TITLES));
   const legacyUrl = database
     .prepare("SELECT value_json FROM app_settings WHERE key='api.data_url'")
     .get()?.value_json;
@@ -447,7 +524,12 @@ function saveSetting(token, key, value) {
     throw new Error("警報聲間隔需為 1～300 的整數秒");
   if (key === "ui.font_sizes") value = normalizeFontSizes(value);
   if (key === "ui.titles") value = normalizeTitles(value);
-  if (key === "ui.logo") validateLogo(value);
+  if (key === "ui.card_layouts") value = normalizeCardLayouts(value);
+  if (Object.hasOwn(IMAGE_SETTINGS, key)) validateImage(key, value);
+  if (key === "ui.logo_style" && !LOGO_STYLES.includes(value))
+    throw new Error("不支援的 Logo 樣式");
+  if (key === "ui.logo_size" && !LOGO_SIZES.includes(value))
+    throw new Error("不支援的 Logo 大小");
   if (
     !database.prepare("SELECT 1 AS ok FROM app_settings WHERE key=?").get(key)
   )

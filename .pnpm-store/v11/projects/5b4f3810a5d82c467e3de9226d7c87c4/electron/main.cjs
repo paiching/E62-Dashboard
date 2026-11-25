@@ -105,7 +105,7 @@ function createWindow() {
     show: false,
     autoHideMenuBar: true,
     backgroundColor: "#f2f6fa",
-    title: "C62 Dashboard",
+    title: "EdgeBox",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
