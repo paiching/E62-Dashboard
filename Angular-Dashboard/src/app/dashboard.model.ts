@@ -5,7 +5,8 @@ export type ViewKey =
   | "alarms"
   | "permissions"
   | "account"
-  | "settings";
+  | "settings"
+  | "help";
 export type SensorState = "ok" | "alarm" | "error";
 export type AlarmFilter = "all" | "alarm" | "error";
 

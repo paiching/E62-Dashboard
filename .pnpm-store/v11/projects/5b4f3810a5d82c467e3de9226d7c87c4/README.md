@@ -61,6 +61,12 @@ node --test tests/database-maintenance.test.cjs
 - `operator1` / `1234`
 - `guest` / 密碼留空
 
+## 使用說明選單
+
+左側「使用說明」與每頁右上角的「？」開啟內建手冊：章節說明、搜尋、互動導覽（逐步框出畫面重點）、常見問題與版本更新紀錄。所有帳號都看得到，不需授權；帳號未開放的章節會標示「未開放」，導覽也會略過沒有權限的步驟。
+
+內容集中在 `src/app/help-content.ts`。**功能新增或調整時須同步更新**（規則見 `CLAUDE.md`），並執行 `node --test tests/help-content.test.cjs` 檢查導覽目標是否仍存在。
+
 ## 開發與建置
 
 ```powershell

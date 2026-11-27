@@ -157,6 +157,15 @@
         <span class="live-pill">LIVE</span><mat-icon>schedule</mat-icon
         ><time>{{ formatDateTime(clock) }}</time>
       </div>
+      <button
+        type="button"
+        class="icon-button topbar-help"
+        (click)="openHelp()"
+        title="使用說明"
+        aria-label="開啟本頁使用說明"
+      >
+        <mat-icon>help_outline</mat-icon>
+      </button>
     </header>
 
     <main class="page-content">
@@ -179,6 +188,16 @@
           秒）</ng-container
         >
       </div>
+      <ng-container *ngIf="view === 'help'">
+        <app-help-center
+          [(chapterId)]="helpChapter"
+          [permissions]="session.permissions"
+          [views]="helpViews"
+          [noAccess]="helpNoAccess"
+          (openView)="navigate($event)"
+          (startTour)="startHelpTour($event)"
+        ></app-help-center>
+      </ng-container>
       <div class="panel empty-message no-access" *ngIf="!navItems.length">
         <mat-icon>lock</mat-icon>
         <h3>此角色尚未授權任何功能</h3>
@@ -2584,3 +2603,10 @@
     </footer>
   </section>
 </div>
+<app-help-tour
+  *ngIf="helpTourSteps.length"
+  [steps]="helpTourSteps"
+  [title]="helpTourTitle"
+  (prepare)="prepareHelpStep($event)"
+  (closed)="endHelpTour()"
+></app-help-tour>

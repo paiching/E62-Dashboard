@@ -24,7 +24,8 @@
               "src/styles/dashboard.css",
               "src/styles/responsive.css",
               "src/styles/angular-overrides.css",
-              "src/styles/permissions.css"
+              "src/styles/permissions.css",
+              "src/styles/help.css"
             ]
           },
           "configurations": {

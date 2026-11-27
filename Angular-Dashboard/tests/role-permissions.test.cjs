@@ -184,7 +184,7 @@ test("a custom role can be added, edited, used and deleted", () => {
   const login = db.login("night", "1234");
   assert.deepEqual(
     login.menus.map((menu) => menu.key),
-    ["alarms"],
+    ["alarms", "help"],
   );
   assert.throws(() => db.deleteRole(admin.token, code), /1 個帳號/);
   db.saveRole(admin.token, {

@@ -352,6 +352,8 @@ function seedDatabase() {
       "users.manage",
     ],
     ["settings", "設定", "settings", "settings", 70, "settings.manage"],
+    // Open to every account (no permission), so it is not in the role editor.
+    ["help", "使用說明", "menu_book", "help", 80, null],
   ];
   const insertMenu = database.prepare(
     "INSERT INTO menu_items(menu_key,label,icon,route,sort_order,required_permission) VALUES(?,?,?,?,?,?) ON CONFLICT(menu_key) DO UPDATE SET label=excluded.label,icon=excluded.icon,route=excluded.route,sort_order=excluded.sort_order,required_permission=excluded.required_permission",

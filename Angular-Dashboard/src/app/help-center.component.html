@@ -1,0 +1,129 @@
+<section class="help-center">
+  <aside class="panel help-toc" aria-label="說明目錄">
+    <header>
+      <mat-icon>menu_book</mat-icon>
+      <div>
+        <b>使用手冊</b><small>更新日期 {{ updated }}</small>
+      </div>
+    </header>
+    <label class="help-search">
+      <mat-icon>search</mat-icon
+      ><input
+        type="search"
+        [(ngModel)]="query"
+        placeholder="搜尋說明，例如：解除警報"
+        aria-label="搜尋說明"
+    /></label>
+    <nav>
+      <button
+        type="button"
+        *ngFor="let item of visibleChapters"
+        [class.active]="!showChangelog && item.id === chapter.id"
+        [attr.aria-current]="
+          !showChangelog && item.id === chapter.id ? 'page' : null
+        "
+        (click)="select(item)"
+      >
+        <mat-icon [svgIcon]="item.icon"></mat-icon
+        ><span>{{ item.title }}</span
+        ><small class="help-locked" *ngIf="!allowed(item)">未開放</small>
+      </button>
+      <p class="help-empty" *ngIf="!visibleChapters.length">
+        找不到「{{ query }}」相關說明。
+      </p>
+    </nav>
+    <button
+      type="button"
+      class="help-changelog-link"
+      [class.active]="showChangelog"
+      (click)="openChangelog()"
+    >
+      <mat-icon>restart_alt</mat-icon><span>版本更新紀錄</span>
+    </button>
+  </aside>
+
+  <article class="panel help-article" *ngIf="!showChangelog">
+    <div class="help-no-access" *ngIf="noAccess">
+      <mat-icon>lock</mat-icon>
+      <span>此帳號尚未開放任何功能，請聯絡管理員到「帳號權限 → 角色」授權。</span>
+    </div>
+    <header class="help-article-header">
+      <span class="help-article-icon"><mat-icon [svgIcon]="chapter.icon"></mat-icon></span>
+      <div>
+        <h2>{{ chapter.title }}</h2>
+        <p>{{ chapter.summary }}</p>
+      </div>
+    </header>
+    <div class="help-article-actions">
+      <button
+        type="button"
+        class="primary-button help-tour-start"
+        *ngIf="tourSteps(chapter)"
+        (click)="startTour.emit(chapter)"
+      >
+        <mat-icon>explore</mat-icon>開始互動導覽（{{ tourSteps(chapter) }} 步）
+      </button>
+      <button
+        type="button"
+        class="secondary-button"
+        *ngIf="canOpen(chapter)"
+        (click)="openView.emit(chapter.view!)"
+      >
+        前往此功能<mat-icon>arrow_forward</mat-icon>
+      </button>
+      <span class="help-locked-note" *ngIf="!allowed(chapter)">
+        <mat-icon>lock</mat-icon>您的帳號未開放此功能，以下說明僅供參考。
+      </span>
+    </div>
+
+    <section class="help-section" *ngFor="let section of chapter.sections">
+      <h3>{{ section.heading }}</h3>
+      <p *ngIf="section.text">{{ section.text }}</p>
+      <ol class="help-steps" *ngIf="section.steps?.length">
+        <li *ngFor="let step of section.steps">{{ step }}</li>
+      </ol>
+      <ul class="help-bullets" *ngIf="section.bullets?.length">
+        <li *ngFor="let bullet of section.bullets">{{ bullet }}</li>
+      </ul>
+      <p class="help-tip" *ngIf="section.tip">
+        <mat-icon>lightbulb</mat-icon><span>{{ section.tip }}</span>
+      </p>
+    </section>
+
+    <footer class="help-pager">
+      <button
+        type="button"
+        class="secondary-button"
+        *ngIf="previous as item"
+        (click)="select(item)"
+      >
+        <mat-icon>arrow_back</mat-icon>{{ item.title }}
+      </button>
+      <span></span>
+      <button
+        type="button"
+        class="secondary-button"
+        *ngIf="next as item"
+        (click)="select(item)"
+      >
+        {{ item.title }}<mat-icon>arrow_forward</mat-icon>
+      </button>
+    </footer>
+  </article>
+
+  <article class="panel help-article" *ngIf="showChangelog">
+    <header class="help-article-header">
+      <span class="help-article-icon"><mat-icon>restart_alt</mat-icon></span>
+      <div>
+        <h2>版本更新紀錄</h2>
+        <p>功能新增或調整時，說明內容會一併更新。</p>
+      </div>
+    </header>
+    <section class="help-section" *ngFor="let change of changelog">
+      <h3>{{ change.date }}</h3>
+      <ul class="help-bullets">
+        <li *ngFor="let item of change.items">{{ item }}</li>
+      </ul>
+    </section>
+  </article>
+</section>

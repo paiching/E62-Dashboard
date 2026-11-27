@@ -101,6 +101,13 @@ import {
   permissionSummary,
 } from "./permissions";
 import { RoleManagerComponent } from "./role-manager.component";
+import { HelpCenterComponent } from "./help-center.component";
+import { HelpTourComponent } from "./help-tour.component";
+import {
+  HELP_CHAPTER_FOR_VIEW,
+  HelpChapter,
+  HelpTourStep,
+} from "./help-content";
 
 interface NavItem {
   key: ViewKey;
@@ -131,6 +138,8 @@ interface PendingLimitChange {
     MatIconModule,
     MaterialSvgIconDirective,
     RoleManagerComponent,
+    HelpCenterComponent,
+    HelpTourComponent,
   ],
   templateUrl: "./app.component.html",
 })
@@ -143,6 +152,7 @@ export class AppComponent implements OnInit, OnDestroy {
     { key: "alarms", label: "警報中心", icon: "notifications_active" },
     { key: "permissions", label: "帳號權限", icon: "verified_user" },
     { key: "settings", label: "設定", icon: "settings" },
+    { key: "help", label: "使用說明", icon: "menu_book" },
   ];
   /** What each menu needs in the browser preview; SQLite decides otherwise. */
   private readonly previewMenus = this.navItems;
@@ -162,7 +172,15 @@ export class AppComponent implements OnInit, OnDestroy {
     permissions: "帳號權限",
     account: "系統測試",
     settings: "系統設定",
+    help: "使用說明",
   };
+  /** Chapter shown on the 使用說明 page. */
+  helpChapter = "start";
+  /** Steps of the running guided tour; empty when no tour is running. */
+  helpTourSteps: HelpTourStep[] = [];
+  helpTourTitle = "";
+  /** Sensor dialog opened by the tour, closed again when the tour moves on. */
+  private helpTourSensor = false;
   readonly pageSizes = [25, 50, 100];
   readonly pointOptions = [30, 60, 120, 300, 500];
   readonly seriesColors = [
@@ -537,6 +555,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   logout(): void {
+    this.helpTourSteps = [];
+    if (this.helpTourSensor) this.selectedSensor = null;
+    this.helpTourSensor = false;
     if (this.session && this.db.available)
       void this.db.logout(this.session.token);
     this.session = null;
@@ -555,6 +576,8 @@ export class AppComponent implements OnInit, OnDestroy {
     return Boolean(this.session?.permissions.includes(code));
   }
   canView(view: ViewKey): boolean {
+    // The manual is open to every signed-in account.
+    if (view === "help") return Boolean(this.session);
     const code = this.viewPermissions[view];
     return Boolean(code && this.can(code));
   }
@@ -590,6 +613,52 @@ export class AppComponent implements OnInit, OnDestroy {
       void this.checkDatabaseConnection();
       void this.loadReleaseReasonUsage();
     }
+  }
+  /** Opens the manual at the chapter for `from` (the current page by default). */
+  openHelp(from: ViewKey = this.view): void {
+    this.helpChapter = HELP_CHAPTER_FOR_VIEW[from] ?? "start";
+    this.navigate("help");
+  }
+  get helpViews(): ViewKey[] {
+    return this.navItems.map((item) => item.key);
+  }
+  get helpNoAccess(): boolean {
+    return !this.navItems.some((item) => item.key !== "help");
+  }
+  startHelpTour(chapter: HelpChapter): void {
+    const steps = (chapter.tour ?? []).filter(
+      (step) =>
+        (!step.permission || this.can(step.permission)) &&
+        (!step.view || this.canView(step.view)),
+    );
+    if (!steps.length) return;
+    this.helpTourTitle = `${chapter.title}導覽`;
+    this.helpTourSteps = steps;
+  }
+  /** Shows the page, tab or dialog a tour step points at. */
+  prepareHelpStep(step: HelpTourStep): void {
+    if (this.helpTourSensor && !step.openSensor) {
+      this.selectedSensor = null;
+      this.helpTourSensor = false;
+    }
+    if (step.view && this.view !== step.view) this.navigate(step.view);
+    if (step.settingsTab) this.selectSettingsTab(step.settingsTab);
+    if (step.permissionTab && this.permissionTab !== step.permissionTab)
+      this.selectPermissionTab(step.permissionTab);
+    if (step.openSensor && !this.selectedSensor) {
+      const channel =
+        this.channels.find((item) => this.state(item) === "alarm") ??
+        this.channels[0];
+      if (channel) {
+        this.openSensor(channel);
+        this.helpTourSensor = Boolean(this.selectedSensor);
+      }
+    }
+  }
+  endHelpTour(): void {
+    this.helpTourSteps = [];
+    if (this.helpTourSensor) this.selectedSensor = null;
+    this.helpTourSensor = false;
   }
   selectPermissionTab(tab: PermissionTab): void {
     this.permissionTab = tab;
