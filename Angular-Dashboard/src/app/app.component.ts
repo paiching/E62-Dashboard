@@ -181,6 +181,8 @@ export class AppComponent implements OnInit, OnDestroy {
   helpTourTitle = "";
   /** Sensor dialog opened by the tour, closed again when the tour moves on. */
   private helpTourSensor = false;
+  /** Where the manual was when a tour started, so ending the tour returns there. */
+  private helpTourReturn: { chapter: string; scroll: number } | null = null;
   readonly pageSizes = [25, 50, 100];
   readonly pointOptions = [30, 60, 120, 300, 500];
   readonly seriesColors = [
@@ -556,6 +558,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   logout(): void {
     this.helpTourSteps = [];
+    this.helpTourReturn = null;
     if (this.helpTourSensor) this.selectedSensor = null;
     this.helpTourSensor = false;
     if (this.session && this.db.available)
@@ -633,6 +636,7 @@ export class AppComponent implements OnInit, OnDestroy {
     );
     if (!steps.length) return;
     this.helpTourTitle = `${chapter.title}導覽`;
+    this.helpTourReturn = { chapter: chapter.id, scroll: window.scrollY };
     this.helpTourSteps = steps;
   }
   /** Shows the page, tab or dialog a tour step points at. */
@@ -655,10 +659,18 @@ export class AppComponent implements OnInit, OnDestroy {
       }
     }
   }
+  /** Closes the tour and goes back to the chapter and spot it started from. */
   endHelpTour(): void {
     this.helpTourSteps = [];
     if (this.helpTourSensor) this.selectedSensor = null;
     this.helpTourSensor = false;
+    const back = this.helpTourReturn;
+    this.helpTourReturn = null;
+    if (!back || !this.session) return;
+    this.helpChapter = back.chapter;
+    this.navigate("help");
+    // Wait for the manual to render before restoring the reading position.
+    setTimeout(() => window.scrollTo({ top: back.scroll }));
   }
   selectPermissionTab(tab: PermissionTab): void {
     this.permissionTab = tab;
