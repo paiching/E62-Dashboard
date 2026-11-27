@@ -130,6 +130,7 @@ function createWindow() {
     autoHideMenuBar: true,
     backgroundColor: "#f2f6fa",
     title: "EdgeBox",
+    icon: path.join(__dirname, "icon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,

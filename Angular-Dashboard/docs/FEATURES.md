@@ -1,8 +1,8 @@
-# C62 Edge Dashboard 功能清單（提案用）
+# EdgeBox 功能清單（提案用）
 
 | 項目 | 內容 |
 | ---- | ---- |
-| 產品名稱 | C62 Edge Dashboard — C62 溫度感應器監控系統 |
+| 產品名稱 | EdgeBox — 感應器監控系統 |
 | 版本 | 1.0.0（Angular 版） |
 | 技術架構 | Angular 20 + Angular Material、Electron 37 桌面版、內建 SQLite（`node:sqlite`） |
 | 部署方式 | Windows x64 Portable EXE／NSIS 安裝程式，客戶端免裝 Node.js、Angular 或資料庫 |

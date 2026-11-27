@@ -1,4 +1,4 @@
-# C62 Angular Dashboard
+# EdgeBox
 
 此專案是獨立的 Angular + TypeScript + Electron 桌面版，介面與 React 版一致，但不依賴 React 專案。
 
@@ -70,6 +70,6 @@ pnpm build
 pnpm package:windows
 ```
 
-Windows portable 執行檔會輸出至 `release/C62-Dashboard-1.0.0-Windows-x64.exe`。應用顯示名稱為 C62 Dashboard；設定頁顯示資料庫檔名。
+Windows portable 執行檔會輸出至 `../../EdgeBox-Release-版本號-YYYYMMDD-HHmm/EdgeBox-1.0.0-Windows-x64.exe`（資料夾名稱帶版本號與打包時間，例如 `EdgeBox-Release-1.0.0-20261126-1030`）；安裝檔 `pnpm package:windows:installer` 也輸出到同樣格式的資料夾。應用顯示名稱為 EdgeBox；設定頁顯示資料庫檔名。
 
-Windows 打包使用已安裝的 `node_modules/electron/dist`，避開 Electron 解壓後重新命名資料夾時的 `EPERM` 問題。可使用 `npm run package:windows -- --config.directories.output=release-test` 指定輸出資料夾。
+Windows 打包使用已安裝的 `node_modules/electron/dist`，避開 Electron 解壓後重新命名資料夾時的 `EPERM` 問題。輸出資料夾由 `scripts/package-windows.cjs` 產生；可使用 `npm run package:windows -- --config.directories.output=../../EdgeBox-Release-test` 改為指定資料夾。

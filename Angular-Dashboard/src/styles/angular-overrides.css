@@ -259,6 +259,23 @@ button {
 .default-limits-card .limit-inputs {
   margin: 14px 0;
 }
+.default-limits-type {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: calc(11px * var(--font-scale));
+  font-weight: 800;
+}
+.default-limits-type select {
+  width: 100%;
+  height: calc(40px * var(--font-scale));
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: #fff;
+  color: var(--ink);
+}
 .limit-inputs input {
   min-width: 0;
 }

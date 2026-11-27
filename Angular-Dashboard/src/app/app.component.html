@@ -134,7 +134,7 @@
           (click)="selectOverviewFilter('alarm')"
         >
           <mat-icon>notifications_active</mat-icon><b>警報：</b
-          ><span>{{ alarmCount }} 點溫度異常</span
+          ><span>{{ alarmCount }} 點超出範圍</span
           ><em *ngIf="errorCount">另 {{ errorCount }} 點 Sensor 異常</em>
         </button>
         <button
@@ -203,7 +203,7 @@
           >
             <span><mat-icon>monitor_heart</mat-icon></span>
             <div>
-              <b>{{ normalCount }}</b
+              <b>{{ typedCount('ok') }}</b
               ><small>正常</small>
             </div>
           </button>
@@ -216,7 +216,7 @@
           >
             <span><mat-icon>error</mat-icon></span>
             <div>
-              <b>{{ alarmCount }}</b
+              <b>{{ typedCount('alarm') }}</b
               ><small>警報</small>
             </div>
           </button>
@@ -229,7 +229,7 @@
           >
             <span><mat-icon>cell_tower</mat-icon></span>
             <div>
-              <b>{{ errorCount }}</b
+              <b>{{ typedCount('error') }}</b
               ><small>Sensor 異常</small>
             </div>
           </button>
@@ -267,8 +267,21 @@
               (ngModelChange)="overviewPage = 0"
               placeholder="搜尋編號或名稱"
             /><select
+              [ngModel]="overviewType"
+              (ngModelChange)="selectOverviewType($event)"
+              aria-label="篩選類型"
+            >
+              <option value="all">全部類型</option>
+              <option
+                *ngFor="let option of channelTypeOptions"
+                [value]="option.type"
+              >
+                {{ option.label }}
+              </option></select
+            ><select
               [(ngModel)]="overviewFilter"
               (ngModelChange)="overviewPage = 0"
+              aria-label="篩選狀態"
             >
               <option value="all">全部狀態</option>
               <option value="ok">正常</option>
@@ -351,7 +364,7 @@
               </div>
               <div class="sensor-value">
                 <strong>{{ formatValue(channel.pv) }}</strong
-                ><span>°C</span>
+                ><span>{{ unit(channel) }}</span>
               </div>
               <div class="sensor-range">
                 <span>{{
@@ -359,11 +372,11 @@
                 }}</span
                 ><b
                   >{{ formatValue(channel.web_lo) }} ～
-                  {{ formatValue(channel.web_hi) }} °C</b
+                  {{ formatValue(channel.web_hi) }} {{ unit(channel) }}</b
                 >
               </div>
               <div class="sensor-card-footer">
-                <span>SV {{ formatValue(channel.sv) }} °C</span
+                <span>SV {{ formatValue(channel.sv) }} {{ unit(channel) }}</span
                 ><time>{{ formatRelativeTime(channel.time) }}</time>
               </div>
               <div
@@ -371,13 +384,13 @@
                 *ngIf="displayMode !== 'compact'"
               >
                 <div>
-                  <span>歷史最低</span><b>{{ formatValue(channel.min) }} °C</b>
+                  <span>歷史最低</span><b>{{ formatValue(channel.min) }} {{ unit(channel) }}</b>
                 </div>
                 <div>
-                  <span>歷史平均</span><b>{{ formatValue(channel.avg) }} °C</b>
+                  <span>歷史平均</span><b>{{ formatValue(channel.avg) }} {{ unit(channel) }}</b>
                 </div>
                 <div>
-                  <span>歷史最高</span><b>{{ formatValue(channel.max) }} °C</b>
+                  <span>歷史最高</span><b>{{ formatValue(channel.max) }} {{ unit(channel) }}</b>
                 </div>
                 <div>
                   <span>筆數</span><b>{{ channel.count }}</b>
@@ -443,7 +456,7 @@
                 /><span
                   ><b>CH{{ channel.id }}</b
                   ><small>{{ channel.name }}</small></span
-                ><em>{{ formatValue(channel.pv) }} °C</em></label
+                ><em>{{ formatValue(channel.pv) }} {{ unit(channel) }}</em></label
               >
             </div>
           </aside>
@@ -676,8 +689,8 @@
                     }}</span>
                   </td>
                   <td class="report-reason">{{ reason(channel) || "—" }}</td>
-                  <td>{{ formatValue(channel.pv) }} °C</td>
-                  <td>{{ formatValue(channel.sv) }} °C</td>
+                  <td>{{ formatValue(channel.pv) }} {{ unit(channel) }}</td>
+                  <td>{{ formatValue(channel.sv) }} {{ unit(channel) }}</td>
                   <td>{{ formatValue(channel.min) }}</td>
                   <td>{{ formatValue(channel.max) }}</td>
                   <td>{{ formatDateTime(channel.time) }}</td>
@@ -1314,9 +1327,10 @@
                   [disabled]="!can('settings.data.data-mode.edit')"
                 >
                   <h3>資料模式</h3>
-                  <p>Mock 也會寫入 SQLite，方便先測試報表。</p>
+                  <p>Mock 也會寫入 SQLite，方便先測試報表。模擬多態會混合溫度與濕度監測點。</p>
                   <select [(ngModel)]="appSettings['data.mode']">
                     <option value="mock">MOCK · 模擬資料</option>
+                    <option value="mock-multi">MOCK · 模擬多態（溫度／濕度）</option>
                     <option value="live">LIVE · 正式 API</option></select
                   ><button
                     class="secondary-button"
@@ -1517,21 +1531,49 @@
                   class="card-fields"
                   [disabled]="!can('settings.alarm.default-limits.edit')"
                 >
-                  <h3>預設溫度上下限</h3>
-                  <p>尚未個別儲存的通道皆使用此值；已個別設定的通道不受影響。</p>
+                  <h3>預設上下限</h3>
+                  <p>依監測類型分別設定；尚未個別儲存的通道使用所屬類型的預設值，已個別設定的通道不受影響。</p>
+                  <label class="default-limits-type"
+                    >類型<select
+                      [ngModel]="defaultLimitsType"
+                      (ngModelChange)="selectDefaultLimitsType($event)"
+                      [disabled]="limitsSaving"
+                    >
+                      <option
+                        *ngFor="let option of defaultLimitTypes"
+                        [value]="option.type"
+                      >
+                        {{ option.label }}
+                      </option>
+                    </select></label
+                  >
                   <p class="limit-source-note">
-                    目前預設值：{{ formatValue(defaultLimits.low) }} ～
-                    {{ formatValue(defaultLimits.high) }} °C
+                    目前預設值：{{
+                      formatValue(defaultLimitsForType(defaultLimitsType).low)
+                    }}
+                    ～
+                    {{
+                      formatValue(defaultLimitsForType(defaultLimitsType).high)
+                    }}
+                    {{ defaultLimitsUnit(defaultLimitsType)
+                    }}<ng-container
+                      *ngIf="defaultLimitsInherited(defaultLimitsType)"
+                      >（尚未設定，沿用溫度預設）</ng-container
+                    >
                   </p>
                   <div class="limit-inputs">
                     <label
-                      >預設溫度下限（°C）<input
+                      >預設下限（{{
+                        defaultLimitsUnit(defaultLimitsType) || "無單位"
+                      }}）<input
                         type="number"
                         step="0.1"
                         [(ngModel)]="defaultLow"
                         [disabled]="!canManageDefaultLimits || limitsSaving" /></label
                     ><label
-                      >預設溫度上限（°C）<input
+                      >預設上限（{{
+                        defaultLimitsUnit(defaultLimitsType) || "無單位"
+                      }}）<input
                         type="number"
                         step="0.1"
                         [(ngModel)]="defaultHigh"
@@ -1989,7 +2031,7 @@
     </header>
     <div class="sensor-modal-reading" *ngIf="can('sensor.reading')">
       <strong>{{ formatValue(selectedSensor.pv) }}</strong
-      ><span>°C</span>
+      ><span>{{ unit(selectedSensor) }}</span>
       <aside class="sensor-reading-status">
         <span class="status-badge" [ngClass]="state(selectedSensor)">{{
           statusLabel(state(selectedSensor))
@@ -2016,15 +2058,15 @@
     >
       <div>
         <span>歷史最低（MIN）</span
-        ><b>{{ formatValue(selectedSensor.min) }} °C</b>
+        ><b>{{ formatValue(selectedSensor.min) }} {{ unit(selectedSensor) }}</b>
       </div>
       <div>
         <span>歷史平均（AVG）</span
-        ><b>{{ formatValue(selectedSensor.avg) }} °C</b>
+        ><b>{{ formatValue(selectedSensor.avg) }} {{ unit(selectedSensor) }}</b>
       </div>
       <div>
         <span>歷史最高（MAX）</span
-        ><b>{{ formatValue(selectedSensor.max) }} °C</b>
+        ><b>{{ formatValue(selectedSensor.max) }} {{ unit(selectedSensor) }}</b>
       </div>
     </div>
     <div class="sensor-settings-form">
@@ -2038,21 +2080,23 @@
           </div>
           <small>
             目前 {{ formatValue(selectedSensor.web_lo) }} ～
-            {{ formatValue(selectedSensor.web_hi) }} °C · 預設
-            {{ formatValue(defaultLimits.low) }} ～
-            {{ formatValue(defaultLimits.high) }} °C
+            {{ formatValue(selectedSensor.web_hi) }}
+            {{ unit(selectedSensor) }} · 預設
+            {{ formatValue(defaultLimitsFor(selectedSensor).low) }} ～
+            {{ formatValue(defaultLimitsFor(selectedSensor).high) }}
+            {{ unit(selectedSensor) }}
           </small>
         </div>
         <div class="limit-inputs">
           <label
-            >下限（°C）<input
+            >下限（{{ unit(selectedSensor) || "無單位" }}）<input
               #sensorLowInput
               type="number"
               [(ngModel)]="editLow"
               step="0.1"
               [disabled]="!canManageLimits || limitsSaving" /></label
           ><label
-            >上限（°C）<input
+            >上限（{{ unit(selectedSensor) || "無單位" }}）<input
               type="number"
               [(ngModel)]="editHigh"
               step="0.1"
@@ -2156,14 +2200,17 @@
     <div class="release-blocked-body" id="release-blocked-text">
       <dl>
         <div>
-          <dt>目前溫度</dt>
-          <dd class="is-out">{{ formatValue(releaseBlocked.pv) }} °C</dd>
+          <dt>目前讀值</dt>
+          <dd class="is-out">
+            {{ formatValue(releaseBlocked.pv) }} {{ unit(releaseBlocked) }}
+          </dd>
         </div>
         <div>
           <dt>警報範圍</dt>
           <dd>
             {{ formatValue(releaseBlocked.web_lo) }} ～
-            {{ formatValue(releaseBlocked.web_hi) }} °C
+            {{ formatValue(releaseBlocked.web_hi) }}
+            {{ unit(releaseBlocked) }}
           </dd>
         </div>
       </dl>

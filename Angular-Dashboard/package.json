@@ -2,15 +2,15 @@
   "name": "angular-dashboard",
   "version": "1.0.0",
   "private": true,
-  "description": "C62 sensor monitoring dashboard",
+  "description": "EdgeBox",
   "main": "electron/main.cjs",
   "scripts": {
     "start": "ng serve --host 127.0.0.1",
     "build": "ng build --base-href ./",
     "desktop": "npm run build && electron .",
-    "package:windows": "npm run build && electron-builder --win portable --config.electronDist=node_modules/electron/dist",
-    "package:windows:dir": "npm run build && electron-builder --win --x64 --dir --config.electronDist=node_modules/electron/dist",
-    "package:windows:installer": "npm run build && electron-builder --win nsis --x64 --config.electronDist=node_modules/electron/dist"
+    "package:windows": "npm run build && node scripts/package-windows.cjs --win portable",
+    "package:windows:dir": "npm run build && node scripts/package-windows.cjs --win --x64 --dir",
+    "package:windows:installer": "npm run build && node scripts/package-windows.cjs --win nsis --x64"
   },
   "dependencies": {
     "@angular/animations": "^20.3.0",
@@ -37,10 +37,10 @@
   },
   "build": {
     "appId": "tw.com.c62.dashboard.angular.demo",
-    "productName": "C62 Dashboard",
+    "productName": "EdgeBox",
     "asar": true,
     "directories": {
-      "output": "release"
+      "output": "../../EdgeBox-Release"
     },
     "files": [
       "dist/angular-dashboard/browser/**/*",
@@ -53,9 +53,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "C62-Dashboard-Setup-${version}-Windows-${arch}.${ext}"
+      "artifactName": "EdgeBox-Setup-${version}-Windows-${arch}.${ext}"
     },
     "win": {
+      "icon": "electron/icon.ico",
       "target": [
         {
           "target": "portable",
@@ -64,7 +65,7 @@
           ]
         }
       ],
-      "artifactName": "C62-Dashboard-${version}-Windows-${arch}.${ext}"
+      "artifactName": "EdgeBox-${version}-Windows-${arch}.${ext}"
     }
   }
 }

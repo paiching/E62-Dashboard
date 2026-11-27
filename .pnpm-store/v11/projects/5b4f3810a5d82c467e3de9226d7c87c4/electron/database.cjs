@@ -164,7 +164,7 @@ function seedDatabase() {
     .prepare("SELECT 1 AS ok FROM app_settings WHERE key='ui.logo' AND value_json<>?")
     .get(json(""));
   const settings = [
-    ["data.mode", "mock", "api", "mock 或 live"],
+    ["data.mode", "mock", "api", "mock、mock-multi 或 live"],
     ["api.data_url", DEFAULT_API_URL, "api", "EC62 API 資料端點"],
     ["api.auth_token", "", "api", "X-EC62-Token"],
     ["api.poll_interval_ms", 60000, "api", "自動同步間隔"],
@@ -225,6 +225,12 @@ function seedDatabase() {
       { low: 2, high: 8 },
       "alarm",
       "未個別設定通道的預設溫度上下限",
+    ],
+    [
+      "alarms.type_default_limits",
+      { humidity: { low: 30, high: 70 } },
+      "alarm",
+      "溫度以外各類型（如濕度）的預設上下限",
     ],
     ["alarms.release_reasons", [], "alarm", "解除警報時可選擇的理由"],
   ];
@@ -602,15 +608,22 @@ async function cleanupHistory(token, browserWindow, dialog) {
 }
 function saveSetting(token, key, value) {
   const session = requireSession(token, settingPermission(key));
-  if (key === "alarms.default_limits") {
-    validateLimits(value);
+  if (
+    key === "alarms.default_limits" ||
+    key === "alarms.type_default_limits"
+  ) {
+    let stored;
+    if (key === "alarms.default_limits") {
+      validateLimits(value);
+      stored = { low: value.low, high: value.high };
+    } else stored = normalizeTypeDefaultLimits(value);
     database.exec("BEGIN IMMEDIATE");
     try {
       database
         .prepare(
           "UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key=?",
         )
-        .run(json({ low: value.low, high: value.high }), key);
+        .run(json(stored), key);
       refreshStoredLimits();
       database.exec("COMMIT");
     } catch (error) {
@@ -941,9 +954,9 @@ function channelReason(channel) {
     low = Number(channel.web_lo),
     high = Number(channel.web_hi);
   if (channel.pv != null && Number.isFinite(low) && pv < low)
-    reasons.push(`低於警報下限 ${low} °C`);
+    reasons.push(`低於警報下限 ${withUnit(low, channelUnit(channel))}`);
   if (channel.pv != null && Number.isFinite(high) && pv > high)
-    reasons.push(`高於警報上限 ${high} °C`);
+    reasons.push(`高於警報上限 ${withUnit(high, channelUnit(channel))}`);
   if (channel.web_alarm) reasons.push("設備警報");
   return reasons.join("、") || null;
 }
@@ -964,12 +977,48 @@ function channelLimitsObject() {
       .map((row) => [row.channel_id, { low: row.low, high: row.high }]),
   );
 }
+const TYPE_UNITS = { temperature: "°C", humidity: "%" };
+function channelType(channel) {
+  return String(channel?.type ?? "").trim() || "temperature";
+}
+function channelUnit(channel) {
+  return typeof channel?.unit === "string"
+    ? channel.unit
+    : (TYPE_UNITS[channelType(channel)] ?? "");
+}
+function withUnit(value, unit) {
+  return unit ? `${value} ${unit}` : String(value);
+}
+// "alarms.default_limits" is for temperature (and untyped legacy channels);
+// other types use "alarms.type_default_limits" and fall back to it.
+const TYPE_KEY_PATTERN = /^[A-Za-z0-9_.-]{1,40}$/;
+function typeDefaultLimits(settings, channel) {
+  const type = channelType(channel);
+  if (type === "temperature") return null;
+  const byType = settings["alarms.type_default_limits"];
+  return byType && typeof byType === "object" && byType[type]
+    ? byType[type]
+    : null;
+}
+function normalizeTypeDefaultLimits(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("類型預設上下限格式錯誤");
+  const result = {};
+  for (const [type, limits] of Object.entries(value)) {
+    if (!TYPE_KEY_PATTERN.test(type) || type === "temperature")
+      throw new Error(`不支援的類型：${type}`);
+    validateLimits(limits);
+    result[type] = { low: limits.low, high: limits.high };
+  }
+  return result;
+}
 function applyChannelLimits(channels) {
-  const defaults = settingsObject()["alarms.default_limits"];
+  const settings = settingsObject();
+  const defaults = settings["alarms.default_limits"];
   const overrides = channelLimitsObject();
   return channels.map((channel) => {
     const id = String(channel.id ?? "").trim();
-    const limits = overrides[id] ?? defaults;
+    const limits = overrides[id] ?? typeDefaultLimits(settings, channel) ?? defaults;
     return {
       ...channel,
       id,
@@ -1326,16 +1375,22 @@ async function exportReport(token, filter, browserWindow, dialog) {
       .all(...where.values)
       .map((row) => ({
         ...row,
-        reason: channelReason({
-          ...parseJson(row.raw_json, {}),
-          pv: row.pv,
-          web_lo: row.low,
-          web_hi: row.high,
-        }),
+        ...(() => {
+          const raw = parseJson(row.raw_json, {});
+          return {
+            unit: channelUnit(raw),
+            reason: channelReason({
+              ...raw,
+              pv: row.pv,
+              web_lo: row.low,
+              web_hi: row.high,
+            }),
+          };
+        })(),
       }));
   const result = await dialog.showSaveDialog(browserWindow, {
     title: "匯出 SQLite 報表",
-    defaultPath: `C62報表_${new Date().toISOString().slice(0, 10)}.csv`,
+    defaultPath: `EdgeBox報表_${new Date().toISOString().slice(0, 10)}.csv`,
     filters: [{ name: "CSV", extensions: ["csv"] }],
   });
   if (result.canceled || !result.filePath) return { canceled: true };
@@ -1344,8 +1399,9 @@ async function exportReport(token, filter, browserWindow, dialog) {
     "名稱",
     "狀態",
     "異常原因",
-    "PV (°C)",
-    "SV (°C)",
+    "PV",
+    "SV",
+    "單位",
     "警報下限",
     "警報上限",
     "記錄時間",
@@ -1362,7 +1418,7 @@ async function exportReport(token, filter, browserWindow, dialog) {
     ["信箱", filter.email, "報表時間", exportTimestamp()],
     ["場域", filter.site],
   ];
-  const content = `\ufeff${header.map(csvCell).join(",")}\r\n${rows.map((row) => [row.id, row.name, row.state, row.reason ?? "", row.pv, row.sv, row.low, row.high, row.time, row.source].map(csvCell).join(",")).join("\r\n")}\r\n\r\n${metadata.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
+  const content = `\ufeff${header.map(csvCell).join(",")}\r\n${rows.map((row) => [row.id, row.name, row.state, row.reason ?? "", row.pv, row.sv, row.unit, row.low, row.high, row.time, row.source].map(csvCell).join(",")).join("\r\n")}\r\n\r\n${metadata.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
   fs.writeFileSync(result.filePath, content, "utf8");
   return { canceled: false, filePath: result.filePath, rowCount: rows.length };
 }

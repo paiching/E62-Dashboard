@@ -110,9 +110,9 @@ test("native notification honors switch, support and failure, without default OS
   enabled = true;
   assert.equal((await notify("valid", "alarm")).sent, true);
   assert.equal(created[0].silent, true);
-  assert.equal(created[0].title, "C62 異常警報");
+  assert.equal(created[0].title, "EdgeBox 異常警報");
   assert.equal((await notify("valid", "test", true)).sent, true);
-  assert.equal(created[1].title, "C62 通知測試");
+  assert.equal(created[1].title, "EdgeBox 通知測試");
   fail = true;
   assert.equal((await notify("valid", "alarm")).sent, false);
   supported = false;

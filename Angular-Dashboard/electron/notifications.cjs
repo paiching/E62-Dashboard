@@ -7,7 +7,7 @@ function createNotifier(Notification, getAlertSettings) {
     if (!Notification.isSupported())
       return { sent: false, message: "此系統不支援桌面通知" };
     const notification = new Notification({
-      title: test ? "C62 通知測試" : "C62 異常警報",
+      title: test ? "EdgeBox 通知測試" : "EdgeBox 異常警報",
       body: String(body || "偵測到新的異常，請查看儀錶板。").slice(0, 500),
       silent: true, // Sound is controlled independently by the alarm-sound switch.
     });

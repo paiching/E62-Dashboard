@@ -1,9 +1,9 @@
-# C62 Dashboard 系統與 SQLite 資料庫設計文件
+# EdgeBox 系統與 SQLite 資料庫設計文件
 
 | 項目     | 內容                                                  |
 | -------- | ----------------------------------------------------- |
 | 文件版本 | 1.0                                                   |
-| 適用程式 | C62 Angular Dashboard 1.0.0                           |
+| 適用程式 | EdgeBox 1.0.0                                         |
 | 技術     | Angular 20、Electron、Node.js `node:sqlite`、SQLite 3 |
 | 狀態     | 對應目前實作；文中「建議」為正式上線改善項目          |
 

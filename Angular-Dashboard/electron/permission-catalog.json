@@ -96,7 +96,7 @@
       ] }
     ] },
     { "code": "settings.alarm", "label": "警報設定", "type": "tab", "children": [
-      { "code": "settings.alarm.default-limits", "label": "預設溫度上下限", "type": "card", "children": [
+      { "code": "settings.alarm.default-limits", "label": "預設上下限", "type": "card", "children": [
         { "code": "settings.alarm.default-limits.edit", "label": "編輯", "type": "action" }
       ] },
       { "code": "settings.alarm.release-reasons", "label": "解除理由設定", "type": "card", "children": [

@@ -21,10 +21,17 @@ import {
   ViewKey,
   sensorReason,
   sensorState,
+  KNOWN_CHANNEL_TYPES,
+  SEED_TYPE_DEFAULT_LIMITS,
+  typeDefaultLimits,
+  typeUnit,
+  channelType,
+  channelTypeLabel,
+  channelUnit,
   alarmReleaseExpired,
   outsideLimits,
 } from "./dashboard.model";
-import { createMockChannels } from "./mock-data";
+import { createMockChannels, MockMode } from "./mock-data";
 import { AlarmTracker } from "./alert-state";
 import {
   AccountRole,
@@ -304,6 +311,8 @@ export class AppComponent implements OnInit, OnDestroy {
   }, 1000);
 
   overviewFilter: "all" | SensorState = "all";
+  /** "all" or an API v1 channel type such as "temperature". */
+  overviewType = "all";
   overviewQuery = "";
   overviewPage = 0;
   displayMode: "compact" | "detailed" | "fullscreen" = "compact";
@@ -313,6 +322,8 @@ export class AppComponent implements OnInit, OnDestroy {
   editLow: number | null = 0;
   editHigh: number | null = 0;
   channelLimits: Record<string, AlarmLimits> = {};
+  /** Type whose default limits the settings card is editing. */
+  defaultLimitsType = "temperature";
   defaultLow: number | null = 2;
   defaultHigh: number | null = 8;
   limitsSaving = false;
@@ -420,7 +431,7 @@ export class AppComponent implements OnInit, OnDestroy {
   async login(): Promise<void> {
     if (this.db.desktopExpected && !this.db.available) {
       this.loginError =
-        "桌面資料庫連線模組未載入，無法登入。請完整關閉所有 C62 視窗，重新建置並啟動桌面版。";
+        "桌面資料庫連線模組未載入，無法登入。請完整關閉所有 EdgeBox 視窗，重新建置並啟動桌面版。";
       return;
     }
     this.alarmSnapshotReady = false;
@@ -708,7 +719,11 @@ export class AppComponent implements OnInit, OnDestroy {
           this.apiCollectedAt = synced.snapshot.collected_at;
         }
       } else {
-        this.channels = createMockChannels().map((channel) => ({
+        const mockMode: MockMode =
+          this.appSettings["data.mode"] === "mock-multi"
+            ? "mock-multi"
+            : "mock";
+        this.channels = createMockChannels(200, mockMode).map((channel) => ({
           ...channel,
           history: previous.get(channel.id) ?? channel.history,
         }));
@@ -716,7 +731,7 @@ export class AppComponent implements OnInit, OnDestroy {
           await this.db.ingestSnapshot(
             this.session.token,
             { time: new Date().toISOString(), channels: this.channels },
-            "mock",
+            mockMode,
           );
         }
       }
@@ -780,8 +795,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.announceNewAlarms();
   }
   private applyDatabaseSettings(): void {
-    this.defaultLow = this.defaultLimits.low;
-    this.defaultHigh = this.defaultLimits.high;
+    this.loadDefaultLimitsDraft();
     this.refreshLimitDisplay();
     const interval = Number(this.appSettings["api.poll_interval_ms"] ?? 60000);
     this.pollIntervalMs = this.refreshOptions.includes(interval / 1000)
@@ -837,9 +851,13 @@ export class AppComponent implements OnInit, OnDestroy {
     this.syncAlarmSound();
   }
 
-  get normalCount(): number {
-    return this.channels.filter((channel) => this.state(channel) === "ok")
-      .length;
+  /** Dashboard channels of the selected type; the summary cards count these. */
+  get typedChannels(): SensorChannel[] {
+    return this.overviewType === "all"
+      ? this.channels
+      : this.channels.filter(
+          (channel) => channelType(channel) === this.overviewType,
+        );
   }
   get alarmCount(): number {
     return this.channels.filter((channel) => this.state(channel) === "alarm")
@@ -848,6 +866,34 @@ export class AppComponent implements OnInit, OnDestroy {
   get errorCount(): number {
     return this.channels.filter((channel) => this.state(channel) === "error")
       .length;
+  }
+  /** Summary-card count for the selected type; the header keeps all types. */
+  typedCount(state: SensorState): number {
+    return this.typedChannels.filter((channel) => this.state(channel) === state)
+      .length;
+  }
+  /** Types seen in the current data, in first-seen order, with their units. */
+  get channelTypeOptions(): { type: string; label: string }[] {
+    const seen = new Map<string, Set<string>>();
+    for (const channel of this.channels) {
+      const type = channelType(channel);
+      if (!seen.has(type)) seen.set(type, new Set());
+      const unit = channelUnit(channel);
+      if (unit) seen.get(type)!.add(unit);
+    }
+    return [...seen].map(([type, units]) => ({
+      type,
+      label: units.size
+        ? `${channelTypeLabel(type)}（${[...units].join("、")}）`
+        : channelTypeLabel(type),
+    }));
+  }
+  unit(channel: SensorChannel): string {
+    return channelUnit(channel);
+  }
+  selectOverviewType(type: string): void {
+    this.overviewType = type;
+    this.overviewPage = 0;
   }
   state(channel: SensorChannel): SensorState {
     return sensorState(channel);
@@ -897,7 +943,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   get filteredOverview(): SensorChannel[] {
     const text = this.overviewQuery.trim().toLocaleLowerCase("zh-TW");
-    return this.channels.filter(
+    return this.typedChannels.filter(
       (channel) =>
         (!text ||
           `CH${channel.id} ${channel.name}`
@@ -938,7 +984,8 @@ export class AppComponent implements OnInit, OnDestroy {
     if (this.limitsSaving || !this.can("sensor.detail")) return;
     const current =
       this.channels.find((item) => item.id === channel.id) ?? channel;
-    const limits = this.channelLimits[current.id] ?? this.defaultLimits;
+    const limits =
+      this.channelLimits[current.id] ?? this.defaultLimitsFor(current);
     this.selectedSensor = {
       ...current,
       web_lo: limits.low,
@@ -1016,6 +1063,62 @@ export class AppComponent implements OnInit, OnDestroy {
       ? limits
       : { low: 2, high: 8 };
   }
+  /** Temperature uses the global default; other types have their own. */
+  defaultLimitsFor(channel: SensorChannel): AlarmLimits {
+    return this.defaultLimitsForType(channelType(channel));
+  }
+  /** The browser preview has no database, so it uses the seeded values. */
+  get typeDefaultLimitSettings(): unknown {
+    return (
+      this.appSettings["alarms.type_default_limits"] ?? SEED_TYPE_DEFAULT_LIMITS
+    );
+  }
+  defaultLimitsForType(type: string): AlarmLimits {
+    return (
+      typeDefaultLimits(this.typeDefaultLimitSettings, type) ??
+      this.defaultLimits
+    );
+  }
+  /** True when a non-temperature type has no default of its own yet. */
+  defaultLimitsInherited(type: string): boolean {
+    return (
+      type !== "temperature" &&
+      !typeDefaultLimits(this.typeDefaultLimitSettings, type)
+    );
+  }
+  /** Built-in types, saved types and types seen in the data. */
+  get defaultLimitTypes(): { type: string; label: string; unit: string }[] {
+    const saved = this.typeDefaultLimitSettings;
+    const types = new Set<string>([
+      ...KNOWN_CHANNEL_TYPES,
+      ...(saved && typeof saved === "object" ? Object.keys(saved) : []),
+      ...this.channels.map((channel) => channelType(channel)),
+    ]);
+    return [...types].map((type) => {
+      const unit = this.defaultLimitsUnit(type);
+      return {
+        type,
+        unit,
+        label: unit
+          ? `${channelTypeLabel(type)}（${unit}）`
+          : channelTypeLabel(type),
+      };
+    });
+  }
+  defaultLimitsUnit(type: string): string {
+    const channel = this.channels.find((item) => channelType(item) === type);
+    return channel ? channelUnit(channel) : typeUnit(type);
+  }
+  selectDefaultLimitsType(type: string): void {
+    this.defaultLimitsType = type;
+    this.defaultLimitsMessage = "";
+    this.loadDefaultLimitsDraft();
+  }
+  private loadDefaultLimitsDraft(): void {
+    const limits = this.defaultLimitsForType(this.defaultLimitsType);
+    this.defaultLow = limits.low;
+    this.defaultHigh = limits.high;
+  }
   get canManageLimits(): boolean {
     return this.db.available && this.can("sensor.limits.edit");
   }
@@ -1037,7 +1140,8 @@ export class AppComponent implements OnInit, OnDestroy {
   private refreshLimitDisplay(): void {
     const releases = { ...this.alarmReleases };
     this.channels = this.channels.map((channel): SensorChannel => {
-      const limits = this.channelLimits[channel.id] ?? this.defaultLimits;
+      const limits =
+        this.channelLimits[channel.id] ?? this.defaultLimitsFor(channel);
       const next: SensorChannel = {
         ...channel,
         web_lo: limits.low,
@@ -1147,7 +1251,7 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     const limits = useDefault
-      ? this.defaultLimits
+      ? this.defaultLimitsFor(this.selectedSensor)
       : { low: this.editLow!, high: this.editHigh! };
     const currentState = this.state(this.selectedSensor);
     const nextState = this.state({
@@ -1529,7 +1633,8 @@ export class AppComponent implements OnInit, OnDestroy {
       await this.latchLimitRecoveries(before);
       if (this.session?.token !== token) return;
       if (this.selectedSensor?.id === id) {
-        const effective = saved[id] ?? this.defaultLimits;
+        const effective =
+          saved[id] ?? this.defaultLimitsFor(this.selectedSensor);
         this.editLow = effective.low;
         this.editHigh = effective.high;
         this.modalMessage = useDefault
@@ -1563,14 +1668,19 @@ export class AppComponent implements OnInit, OnDestroy {
       return;
     }
     const token = this.session.token;
+    const type = this.defaultLimitsType;
+    const limits = { low: this.defaultLow, high: this.defaultHigh };
+    const saved = this.typeDefaultLimitSettings;
     this.limitsSaving = true;
     this.defaultLimitsMessage = "";
     try {
-      const settings = await this.db.saveSetting(
-        token,
-        "alarms.default_limits",
-        { low: this.defaultLow, high: this.defaultHigh },
-      );
+      const settings =
+        type === "temperature"
+          ? await this.db.saveSetting(token, "alarms.default_limits", limits)
+          : await this.db.saveSetting(token, "alarms.type_default_limits", {
+              ...(saved && typeof saved === "object" ? saved : {}),
+              [type]: limits,
+            });
       if (!settings) throw new Error("未收到儲存結果，請重新啟動桌面程式");
       if (this.session?.token !== token) return;
       const before = this.limitAlarmSnapshot();
@@ -1578,7 +1688,7 @@ export class AppComponent implements OnInit, OnDestroy {
       this.applyDatabaseSettings();
       await this.latchLimitRecoveries(before);
       if (this.session?.token !== token) return;
-      this.defaultLimitsMessage = "預設上下限已儲存，未個別設定的通道已套用";
+      this.defaultLimitsMessage = `${channelTypeLabel(type)}預設上下限已儲存，未個別設定的${channelTypeLabel(type)}通道已套用`;
       this.defaultLimitsFailed = false;
       this.notifyLimitAlarms();
     } catch (error) {
@@ -1744,7 +1854,7 @@ export class AppComponent implements OnInit, OnDestroy {
       }
       return;
     }
-    const header = "通道,名稱,狀態,PV (°C),SV (°C),MIN,MAX,更新時間";
+    const header = "通道,名稱,狀態,PV,SV,單位,MIN,MAX,更新時間";
     const rows = this.filteredChannelRows.map((channel) =>
       [
         `CH${channel.id}`,
@@ -1752,6 +1862,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.statusLabel(this.state(channel)),
         channel.pv ?? "",
         channel.sv,
+        channelUnit(channel),
         channel.min,
         channel.max,
         this.formatDateTime(channel.time),
@@ -2071,7 +2182,7 @@ export class AppComponent implements OnInit, OnDestroy {
       throw new Error(
         "尚未允許通知，請在設定按「測試通知」授權，或使用 Electron 桌面版",
       );
-    new Notification(test ? "C62 通知測試" : "C62 異常警報", {
+    new Notification(test ? "EdgeBox 通知測試" : "EdgeBox 異常警報", {
       body,
       silent: true,
     });

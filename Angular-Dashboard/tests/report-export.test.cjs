@@ -43,7 +43,7 @@ test("CSV export preserves negative readings and protects formula-like text", as
   assert.ok(content.startsWith("\ufeff"));
   const rows = content.split("\r\n").slice(1, names.length + 1);
   for (const row of rows) {
-    assert.ok(row.includes(',"-25.3","-25","-30","-10",'), row);
+    assert.ok(row.includes(',"-25.3","-25","°C","-30","-10",'), row);
   }
   for (let index = 0; index < 4; index++) {
     assert.ok(rows[index].includes(`,"'${names[index]}",`), rows[index]);

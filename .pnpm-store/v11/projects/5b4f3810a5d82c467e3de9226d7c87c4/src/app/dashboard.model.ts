@@ -40,6 +40,10 @@ export function alarmReleaseExpired(
 export interface SensorChannel {
   id: string;
   name: string;
+  /** API v1 measurement kind, e.g. "temperature" or "humidity". */
+  type?: string;
+  /** API v1 display unit, e.g. "°C" or "%"; may be an empty string. */
+  unit?: string;
   pv: number | null;
   sv: number | null;
   status?: "ok" | "read_error";
@@ -79,6 +83,60 @@ export interface LocalAccount {
   roleCode: string;
   scope: string;
   active?: boolean | number;
+}
+
+/** Channels from older APIs carry no type; they are temperature probes. */
+export const DEFAULT_CHANNEL_TYPE = "temperature";
+const CHANNEL_TYPE_LABELS: Record<string, string> = {
+  temperature: "溫度",
+  humidity: "濕度",
+};
+const CHANNEL_TYPE_UNITS: Record<string, string> = {
+  temperature: "°C",
+  humidity: "%",
+};
+/** Matches the database seed; used when no setting has been loaded. */
+export const SEED_TYPE_DEFAULT_LIMITS: Record<string, AlarmLimits> = {
+  humidity: { low: 30, high: 70 },
+};
+/** Types always offered in settings, even before any channel reports them. */
+export const KNOWN_CHANNEL_TYPES = Object.keys(CHANNEL_TYPE_LABELS);
+/**
+ * "alarms.default_limits" holds the temperature default; other types read
+ * "alarms.type_default_limits" and fall back to the temperature default.
+ */
+export function typeDefaultLimits(
+  byType: unknown,
+  type: string,
+): AlarmLimits | null {
+  if (type === DEFAULT_CHANNEL_TYPE || !byType || typeof byType !== "object")
+    return null;
+  const limits = (byType as Record<string, AlarmLimits>)[type];
+  return limits &&
+    Number.isFinite(limits.low) &&
+    Number.isFinite(limits.high) &&
+    limits.low < limits.high
+    ? limits
+    : null;
+}
+export function typeUnit(type: string): string {
+  return CHANNEL_TYPE_UNITS[type] ?? "";
+}
+export function channelType(channel: Pick<SensorChannel, "type">): string {
+  return channel.type?.trim() || DEFAULT_CHANNEL_TYPE;
+}
+export function channelUnit(
+  channel: Pick<SensorChannel, "type" | "unit">,
+): string {
+  return typeof channel.unit === "string"
+    ? channel.unit
+    : (CHANNEL_TYPE_UNITS[channelType(channel)] ?? "");
+}
+export function channelTypeLabel(type: string): string {
+  return CHANNEL_TYPE_LABELS[type] ?? type;
+}
+export function withUnit(value: string, unit: string): string {
+  return unit ? `${value} ${unit}` : value;
 }
 
 export function sensorState(channel: SensorChannel): SensorState {
@@ -124,13 +182,17 @@ export function sensorReason(channel: SensorChannel): string | null {
     Number.isFinite(channel.web_lo) &&
     channel.pv < channel.web_lo
   )
-    reasons.push(`低於警報下限 ${channel.web_lo} °C`);
+    reasons.push(
+      `低於警報下限 ${withUnit(String(channel.web_lo), channelUnit(channel))}`,
+    );
   if (
     channel.pv !== null &&
     Number.isFinite(channel.web_hi) &&
     channel.pv > channel.web_hi
   )
-    reasons.push(`高於警報上限 ${channel.web_hi} °C`);
+    reasons.push(
+      `高於警報上限 ${withUnit(String(channel.web_hi), channelUnit(channel))}`,
+    );
   if (channel.web_alarm) reasons.push("設備警報");
   if (!reasons.length && channel.alarm_latch)
     reasons.push(`${channel.alarm_latch.reason}（範圍已調整，需手動解除）`);

@@ -66,6 +66,7 @@ const SETTING_PERMISSIONS = {
   "report.retention_days": "settings.data.retention.edit",
   "dashboard.show_status": "settings.alarm.status-bar.edit",
   "alarms.default_limits": "settings.alarm.default-limits.edit",
+  "alarms.type_default_limits": "settings.alarm.default-limits.edit",
   "alarms.release_reasons": "settings.alarm.release-reasons.edit",
   "alarms.sound_enabled": "settings.alarm.alarm-sound.edit",
   "alarms.sound_interval_seconds": "settings.alarm.alarm-sound.edit",

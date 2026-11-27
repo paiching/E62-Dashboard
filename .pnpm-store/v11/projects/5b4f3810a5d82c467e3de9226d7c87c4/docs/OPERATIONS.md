@@ -1,11 +1,11 @@
-# C62 Dashboard 使用與維運手冊
+# EdgeBox 使用與維運手冊
 
 ## 1. 部署與資料位置
 
 客戶端不需安裝 Node.js、Angular 或 SQLite，直接執行：
 
 ```text
-C62-Dashboard-1.0.0-Windows-x64.exe
+EdgeBox-1.0.0-Windows-x64.exe
 ```
 
 Portable EXE 可搬動，但資料庫保存在：
