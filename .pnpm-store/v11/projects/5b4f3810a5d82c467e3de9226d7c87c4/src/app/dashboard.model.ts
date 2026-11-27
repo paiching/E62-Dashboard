@@ -171,6 +171,27 @@ export function outsideLimits(channel: SensorChannel): boolean {
   return channel.pv < channel.web_lo || channel.pv > channel.web_hi;
 }
 
+/**
+ * One icon for the main cause, so a card keeps its height; the full text
+ * from sensorReason() goes in its tooltip.
+ */
+export function sensorReasonIcon(channel: SensorChannel): string {
+  if (
+    channel.status === "read_error" ||
+    channel.st === 2 ||
+    channel.pv === null
+  )
+    return "sensors_off";
+  if (Number.isFinite(channel.web_hi) && channel.pv > channel.web_hi)
+    return "trending_up";
+  if (Number.isFinite(channel.web_lo) && channel.pv < channel.web_lo)
+    return "trending_down";
+  if (channel.st === 3) return "repeat";
+  if (channel.web_alarm) return "notifications_active";
+  if (channel.alarm_latch) return "push_pin";
+  return "error";
+}
+
 export function sensorReason(channel: SensorChannel): string | null {
   const reasons: string[] = [];
   if (channel.status === "read_error") reasons.push("PV／SV 讀取失敗");

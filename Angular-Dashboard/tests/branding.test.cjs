@@ -176,6 +176,7 @@ test("dashboard card size is validated, persisted and admin only", () => {
   const directory = mkdtempSync(path.join(tmpdir(), "c62-card-size-"));
   db.initializeDatabase(directory, true);
   assert.equal(db.settingsObject()["ui.card_size"], 100);
+  assert.equal(db.settingsObject()["ui.card_hover"], 105);
   const { token } = db.login("admin", "SGS@1234").session;
   assert.equal(
     db.saveSetting(token, "ui.card_size", 150)["ui.card_size"],

@@ -18,6 +18,8 @@
   --font-scale-general: 1;
   --font-scale-topbar: 1;
   --font-scale-cards: 1;
+  --font-scale-units: 1;
+  --card-hover-scale: 1.05;
   --font-scale-trends: 1;
   --font-scale: var(--font-scale-general);
   /* Sensor card scale; written from 系統設定 > 主題設定 > 儀錶板卡片大小. */

@@ -21,6 +21,10 @@ let database;
 const sessions = new Map();
 let cleanupInProgress = false;
 const DEFAULT_API_URL = "http://192.168.68.50:8088/api/v1/latest";
+// EdgeSense API v1 (login cookie + /channels/current) for "live-multi".
+const DEFAULT_API_V1_URL = "http://127.0.0.1:8765";
+const DATA_MODES = ["mock", "mock-multi", "live", "live-multi"];
+const API_V1_CREDENTIALS_KEY = "api.v1_credentials";
 const json = (value) => JSON.stringify(value);
 function parseJson(value, fallback = null) {
   try {
@@ -112,6 +116,8 @@ const IMAGE_SETTINGS = {
 const LOGO_STYLES = ["inverse", "original", "light"];
 const LOGO_SIZES = ["standard", "large", "xlarge"];
 const CARD_SIZES = [85, 100, 125, 150, 200];
+// Keep in sync with CARD_HOVER_SCALES in src/app/card-size.ts; 100 is off.
+const CARD_HOVER_SCALES = [100, 103, 105, 108];
 const SETTINGS_TABS = ["theme", "data", "database", "alarm", "notification"];
 function normalizeCardLayouts(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -164,8 +170,15 @@ function seedDatabase() {
     .prepare("SELECT 1 AS ok FROM app_settings WHERE key='ui.logo' AND value_json<>?")
     .get(json(""));
   const settings = [
-    ["data.mode", "mock", "api", "mock、mock-multi 或 live"],
+    ["data.mode", "mock", "api", "mock、mock-multi、live 或 live-multi"],
     ["api.data_url", DEFAULT_API_URL, "api", "EC62 API 資料端點"],
+    ["api.v1_url", DEFAULT_API_V1_URL, "api", "EdgeSense API v1 網址（多態）"],
+    [
+      API_V1_CREDENTIALS_KEY,
+      { username: "", password: "" },
+      "api",
+      "EdgeSense API v1 登入帳密（password 為加密值）",
+    ],
     ["api.auth_token", "", "api", "X-EC62-Token"],
     ["api.poll_interval_ms", 60000, "api", "自動同步間隔"],
     ["report.retention_days", 365, "report", "歷史資料保留天數"],
@@ -173,7 +186,7 @@ function seedDatabase() {
     ["ui.default_view", "overview", "display", "登入後預設頁面"],
     [
       "ui.font_sizes",
-      { general: 100, topbar: 100, cards: 100, trends: 100 },
+      { general: 100, topbar: 100, cards: 100, units: 100, trends: 100 },
       "display",
       "各區域字級百分比",
     ],
@@ -199,6 +212,7 @@ function seedDatabase() {
       "LINE 官方帳號推播（secret 為加密值）",
     ],
     ["ui.card_size", 100, "display", "儀錶板卡片大小百分比"],
+    ["ui.card_hover", 105, "display", "滑鼠移入卡片的放大百分比（100 為關閉）"],
     ["ui.card_layouts", {}, "display", "各設定分頁的卡片排列"],
     [
       "ui.login_background",
@@ -389,6 +403,13 @@ function settingsObject() {
     const { secret, ...visible } = settings[LINE_KEY];
     settings[LINE_KEY] = { ...visible, hasSecret: Boolean(secret) };
   }
+  if (settings[API_V1_CREDENTIALS_KEY]) {
+    const { username, password } = settings[API_V1_CREDENTIALS_KEY];
+    settings[API_V1_CREDENTIALS_KEY] = {
+      username: String(username ?? ""),
+      hasPassword: Boolean(password),
+    };
+  }
   return settings;
 }
 /** What one session may read; the API token and LINE IDs have their own card. */
@@ -397,6 +418,8 @@ function visibleSettings(session) {
   const can = (code) => Boolean(session?.permissions.includes(code));
   if (!can("settings.data.api-token") && "api.auth_token" in settings)
     settings["api.auth_token"] = "";
+  if (!can("settings.data.api-token") && settings[API_V1_CREDENTIALS_KEY])
+    settings[API_V1_CREDENTIALS_KEY] = { username: "", hasPassword: false };
   if (!can("settings.notification.line") && settings[LINE_KEY])
     settings[LINE_KEY] = {
       enabled: settings[LINE_KEY].enabled,
@@ -642,6 +665,13 @@ function saveSetting(token, key, value) {
     if (locked)
       throw new Error(`「${locked}」已有解除紀錄，不能刪除，可改名`);
   }
+  if (key === API_V1_CREDENTIALS_KEY) {
+    saveApiV1Credentials(value);
+    return visibleSettings(session);
+  }
+  if (key === "data.mode" && !DATA_MODES.includes(value))
+    throw new Error("不支援的資料模式");
+  if (key === "api.v1_url") value = normalizeApiV1Url(value);
   if (key === "api.poll_interval_ms" && ![10000, 30000, 60000].includes(value))
     throw new Error("刷新頻率僅支援 10、30、60 秒");
   if (
@@ -667,6 +697,8 @@ function saveSetting(token, key, value) {
     throw new Error("不支援的 Logo 樣式");
   if (key === "ui.card_size" && !CARD_SIZES.includes(value))
     throw new Error("不支援的卡片大小");
+  if (key === "ui.card_hover" && !CARD_HOVER_SCALES.includes(value))
+    throw new Error("不支援的滑鼠移入效果");
   if (key === "ui.logo_size" && !LOGO_SIZES.includes(value))
     throw new Error("不支援的 Logo 大小");
   if (
@@ -681,11 +713,22 @@ function saveSetting(token, key, value) {
   return visibleSettings(session);
 }
 // Keep in sync with FONT_SIZE_AREAS in src/app/font-size.ts.
-const FONT_SIZE_LIMITS = { general: 150, topbar: 200, cards: 200, trends: 150 };
+const FONT_SIZE_LIMITS = {
+  general: 150,
+  topbar: 200,
+  cards: 200,
+  units: 300,
+  trends: 150,
+};
+// Areas added later default to 100% so older saved values stay valid.
+const FONT_SIZE_OPTIONAL = new Set(["units"]);
 function normalizeFontSizes(value) {
   const result = {};
   for (const [area, max] of Object.entries(FONT_SIZE_LIMITS)) {
-    const percent = value?.[area];
+    const percent =
+      value && value[area] === undefined && FONT_SIZE_OPTIONAL.has(area)
+        ? 100
+        : value?.[area];
     if (!Number.isInteger(percent) || percent < 100 || percent > max)
       throw new Error(`字級需為 100～${max} 的整數百分比`);
     result[area] = percent;
@@ -1230,12 +1273,205 @@ function ingestSnapshot(snapshot, source = "api", sourceUrl = null) {
 }
 // Recording and alarm notices run in the background for whoever is signed in,
 // so they need a session but no particular menu.
+function normalizeApiV1Url(value) {
+  let url;
+  try {
+    url = new URL(String(value ?? "").trim());
+  } catch {
+    throw new Error("API v1 網址格式不正確");
+  }
+  if (!["http:", "https:"].includes(url.protocol))
+    throw new Error("API v1 網址需為 http 或 https");
+  // Accept a pasted endpoint and keep only the site the API lives on.
+  const base = url.pathname.replace(/\/api\/v1(\/.*)?$/, "").replace(/\/+$/, "");
+  return `${url.origin}${base}`;
+}
+function saveApiV1Credentials(input) {
+  const username = String(input?.username ?? "").trim();
+  const newPassword = String(input?.password ?? "");
+  if (username.length > 80) throw new Error("API v1 帳號最多 80 字元");
+  if (Buffer.byteLength(newPassword, "utf8") > 1024)
+    throw new Error("API v1 密碼過長");
+  const current = parseJson(
+    database
+      .prepare("SELECT value_json FROM app_settings WHERE key=?")
+      .get(API_V1_CREDENTIALS_KEY).value_json,
+    {},
+  );
+  if (username && !newPassword && !current.password)
+    throw new Error("請輸入 API v1 密碼");
+  // A blank password keeps the saved one; a blank username clears both.
+  const password = !username
+    ? ""
+    : newPassword
+      ? secretCodec.encrypt(newPassword)
+      : current.password;
+  database
+    .prepare(
+      "UPDATE app_settings SET value_json=?,updated_at=CURRENT_TIMESTAMP WHERE key=?",
+    )
+    .run(json({ username, password }), API_V1_CREDENTIALS_KEY);
+  apiV1Session = null;
+}
+function apiV1Credentials() {
+  const stored = parseJson(
+    database
+      .prepare("SELECT value_json FROM app_settings WHERE key=?")
+      .get(API_V1_CREDENTIALS_KEY)?.value_json,
+    {},
+  );
+  if (!stored?.username || !stored.password)
+    throw new Error("尚未設定 API v1 帳號與密碼");
+  let password;
+  try {
+    password = secretCodec.decrypt(stored.password);
+  } catch {
+    throw new Error("API v1 密碼無法解密，請重新儲存");
+  }
+  return { username: stored.username, password };
+}
+// Login cookie kept in the main process only; reset when settings change.
+let apiV1Session = null;
+async function apiV1Error(response) {
+  let detail = "";
+  try {
+    const body = await response.json();
+    detail = typeof body?.detail === "string" ? body.detail : "";
+  } catch {
+    // Errors may not be JSON.
+  }
+  return new Error(
+    `API v1 ${response.status}${detail ? `：${detail}` : `: ${response.statusText ?? ""}`}`.trim(),
+  );
+}
+async function apiV1Login(base) {
+  const { username, password } = apiV1Credentials();
+  const response = await fetch(`${base}/api/v1/auth/login`, {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: new URL(base).origin,
+    },
+    body: JSON.stringify({ username, password }),
+  });
+  if (response.status === 401) throw new Error("API v1 帳號或密碼錯誤");
+  if (response.status === 429) {
+    const wait = response.headers?.get?.("retry-after");
+    throw new Error(
+      `API v1 登入過於頻繁${wait ? `，請 ${wait} 秒後再試` : ""}`,
+    );
+  }
+  if (!response.ok) throw await apiV1Error(response);
+  const cookies =
+    response.headers?.getSetCookie?.() ??
+    [response.headers?.get?.("set-cookie")].filter(Boolean);
+  const cookie = cookies
+    .map((line) => String(line).split(";")[0].trim())
+    .find((pair) => pair.startsWith("edgesense_session="));
+  if (!cookie) throw new Error("API v1 登入未取得 Session Cookie");
+  apiV1Session = { base, username, cookie };
+}
+async function apiV1Get(base, path) {
+  const { username } = apiV1Credentials();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (apiV1Session?.base !== base || apiV1Session.username !== username)
+      await apiV1Login(base);
+    const response = await fetch(`${base}${path}`, {
+      cache: "no-store",
+      headers: { Cookie: apiV1Session.cookie },
+    });
+    // Sessions end after 8 hours or a backend restart: sign in again once.
+    if (response.status === 401 && attempt === 0) {
+      apiV1Session = null;
+      continue;
+    }
+    if (!response.ok) throw await apiV1Error(response);
+    return response.json();
+  }
+  throw new Error("API v1 無法登入");
+}
+/** Maps /api/v1/channels/current onto the snapshot shape the app stores. */
+function apiV1Snapshot(current, pollSeconds, now = Date.now()) {
+  if (!current || !Array.isArray(current.channels))
+    throw new Error("API v1 回應格式錯誤");
+  if (!current.channels.length)
+    throw new Error("API v1 沒有可查看的監測點");
+  const collectedAt = normalizeDate(current.snapshot_at) || new Date(now).toISOString();
+  const channels = current.channels.map((channel) => {
+    const value =
+      typeof channel.value === "number" && Number.isFinite(channel.value)
+        ? channel.value
+        : null;
+    // st null with no time means the first reading has not arrived yet.
+    const waiting = channel.st == null && value === null;
+    return {
+      id: String(channel.id ?? "").trim(),
+      name: String(channel.name ?? channel.id ?? ""),
+      type: String(channel.type ?? ""),
+      unit: String(channel.unit ?? ""),
+      pv: value,
+      sv: null,
+      st: waiting ? 2 : channel.st,
+      status: value === null ? "read_error" : "ok",
+      time: normalizeDate(channel.time),
+      ...(waiting ? { waiting: true } : {}),
+    };
+  });
+  const times = channels
+    .map((channel) => (channel.time ? Date.parse(channel.time) : NaN))
+    .filter(Number.isFinite);
+  const ageSeconds = times.length
+    ? Math.max(0, (now - Math.max(...times)) / 1000)
+    : 0;
+  return {
+    collected_at: collectedAt,
+    status: "connected",
+    channel_count: channels.length,
+    channels,
+    age_seconds: ageSeconds,
+    stale: times.length > 0 && ageSeconds > Math.max(120, pollSeconds * 3),
+  };
+}
+async function syncApiV1(token, persist) {
+  const settings = settingsObject();
+  const base = normalizeApiV1Url(settings["api.v1_url"] ?? DEFAULT_API_V1_URL);
+  const current = await apiV1Get(base, "/api/v1/channels/current");
+  requireSession(token);
+  const snapshot = apiV1Snapshot(
+    current,
+    Number(settings["api.poll_interval_ms"] ?? 60000) / 1000,
+  );
+  const url = `${base}/api/v1/channels/current`;
+  const result = persist
+    ? { ...ingestSnapshot(snapshot, "api-v1", url), persisted: true }
+    : {
+        batchId: null,
+        channelCount: snapshot.channels.length,
+        recordedAt: snapshot.collected_at,
+        persisted: false,
+      };
+  return {
+    snapshot: {
+      ...snapshot,
+      channels: hydrateChannels(
+        snapshot.channels.map((channel) => ({
+          ...channel,
+          time: channel.time || snapshot.collected_at,
+        })),
+      ),
+    },
+    result,
+  };
+}
 function ingestSnapshotAuthorized(token, snapshot, source = "mock") {
   requireSession(token);
   return ingestSnapshot(snapshot, source, null);
 }
 async function syncApi(token, persist = true) {
   requireSession(token);
+  if (settingsObject()["data.mode"] === "live-multi")
+    return syncApiV1(token, persist);
   const settings = settingsObject(),
     url = String(settings["api.data_url"]),
     apiToken = String(settings["api.auth_token"] ?? "");
@@ -1734,6 +1970,7 @@ module.exports = {
   exportAlarmReleases,
   ingestSnapshotAuthorized,
   syncApi,
+  apiV1Snapshot,
   latestSnapshot,
   queryReport,
   exportReport,

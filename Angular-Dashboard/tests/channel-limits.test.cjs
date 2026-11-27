@@ -288,6 +288,7 @@ const names = [
   "saveSensorLimits",
   "saveDefaultLimits",
   "refreshData",
+  "isLiveMode",
   "announceNewAlarms",
   "limitAlarmSnapshot",
   "latchLimitRecoveries",

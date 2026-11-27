@@ -1,10 +1,16 @@
-export type FontSizeArea = "general" | "topbar" | "cards" | "trends";
+export type FontSizeArea =
+  | "general"
+  | "topbar"
+  | "cards"
+  | "units"
+  | "trends";
 export type FontSizes = Record<FontSizeArea, number>;
 
 export const DEFAULT_FONT_SIZES: FontSizes = {
   general: 100,
   topbar: 100,
   cards: 100,
+  units: 100,
   trends: 100,
 };
 
@@ -14,7 +20,9 @@ const LEVELS = [
   { percent: 130, label: "大（130%）" },
   { percent: 150, label: "特大（150%）" },
   { percent: 175, label: "超大（175%）" },
-  { percent: 200, label: "最大（200%）" },
+  { percent: 200, label: "極大（200%）" },
+  { percent: 250, label: "巨大（250%）" },
+  { percent: 300, label: "最大（300%）" },
 ];
 const upTo = (max: number) => LEVELS.filter((level) => level.percent <= max);
 
@@ -26,6 +34,8 @@ export const FONT_SIZE_AREAS: ReadonlyArray<{
 }> = [
   { key: "topbar", label: "頂部時間列", levels: upTo(200) },
   { key: "cards", label: "儀錶板卡片", levels: upTo(200) },
+  // Multiplies the card size, so the unit grows with the reading.
+  { key: "units", label: "讀值單位（°C、%）", levels: upTo(300) },
   { key: "trends", label: "趨勢圖", levels: upTo(150) },
   {
     key: "general",

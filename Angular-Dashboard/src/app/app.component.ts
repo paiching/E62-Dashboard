@@ -20,6 +20,7 @@ import {
   UserSession,
   ViewKey,
   sensorReason,
+  sensorReasonIcon,
   sensorState,
   KNOWN_CHANNEL_TYPES,
   SEED_TYPE_DEFAULT_LIMITS,
@@ -68,6 +69,10 @@ import {
 import {
   CARD_SIZES,
   DEFAULT_CARD_SIZE,
+  CARD_HOVER_SCALES,
+  DEFAULT_CARD_HOVER,
+  parseCardHover,
+  applyCardHover,
   applyCardSize,
   parseCardSize,
 } from "./card-size";
@@ -230,6 +235,9 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly cardSizes = CARD_SIZES;
   readonly defaultCardSize = DEFAULT_CARD_SIZE;
   cardSize = DEFAULT_CARD_SIZE;
+  readonly cardHoverScales = CARD_HOVER_SCALES;
+  readonly defaultCardHover = DEFAULT_CARD_HOVER;
+  cardHover = DEFAULT_CARD_HOVER;
   cardSizeSaving = false;
   cardSizeMessage = "";
   cardSizeFailed = false;
@@ -708,7 +716,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (
         this.session &&
         this.db.available &&
-        this.appSettings["data.mode"] === "live"
+        this.isLiveMode
       ) {
         const synced = await this.db.syncApi(this.session.token, persist);
         if (synced) {
@@ -794,7 +802,32 @@ export class AppComponent implements OnInit, OnDestroy {
     this.syncAlarmSound();
     this.announceNewAlarms();
   }
+  /** Both live modes read a device API; browser preview falls back to mock. */
+  get isLiveMode(): boolean {
+    return ["live", "live-multi"].includes(String(this.appSettings["data.mode"]));
+  }
+  apiV1Draft = { username: "", password: "" };
+  get apiV1HasPassword(): boolean {
+    return Boolean(
+      (this.appSettings["api.v1_credentials"] as { hasPassword?: boolean })
+        ?.hasPassword,
+    );
+  }
+  async saveApiV1Credentials(): Promise<void> {
+    const saved = await this.saveDatabaseSetting("api.v1_credentials", {
+      username: this.apiV1Draft.username.trim(),
+      password: this.apiV1Draft.password,
+    });
+    if (saved) this.apiV1Draft.password = "";
+  }
   private applyDatabaseSettings(): void {
+    const credentials = this.appSettings["api.v1_credentials"] as
+      | { username?: string }
+      | undefined;
+    this.apiV1Draft = {
+      username: String(credentials?.username ?? ""),
+      password: this.apiV1Draft.password,
+    };
     this.loadDefaultLimitsDraft();
     this.refreshLimitDisplay();
     const interval = Number(this.appSettings["api.poll_interval_ms"] ?? 60000);
@@ -822,6 +855,8 @@ export class AppComponent implements OnInit, OnDestroy {
     applyFontSizes(this.fontSizes);
     this.cardSize = parseCardSize(this.appSettings["ui.card_size"]);
     applyCardSize(this.cardSize);
+    this.cardHover = parseCardHover(this.appSettings["ui.card_hover"]);
+    applyCardHover(this.cardHover);
     for (const key of ["logo", "sidebar", "background"] as const)
       this.brandImages[key].url = parseBrandImage(
         key,
@@ -900,6 +935,9 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   reason(channel: SensorChannel): string | null {
     return sensorReason(channel);
+  }
+  reasonIcon(channel: SensorChannel): string {
+    return sensorReasonIcon(channel);
   }
   statusLabel(state: SensorState): string {
     return { ok: "正常", alarm: "警報", error: "異常" }[state];
@@ -2703,6 +2741,31 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     this.cardSizeMessage = this.settingsMessage || "卡片大小儲存失敗";
   }
+  async setCardHover(percent: number): Promise<void> {
+    if (this.cardSizeSaving) return;
+    const previous = this.cardHover;
+    this.cardHover = percent;
+    applyCardHover(percent);
+    this.cardSizeSaving = true;
+    this.cardSizeMessage = "";
+    this.cardSizeFailed = !(await this.saveDatabaseSetting(
+      "ui.card_hover",
+      percent,
+    ));
+    this.cardSizeSaving = false;
+    if (this.cardSizeFailed) {
+      this.cardHover = previous;
+      applyCardHover(previous);
+    }
+    this.cardSizeMessage = this.settingsMessage || "滑鼠移入效果儲存失敗";
+  }
+  /** One save at a time: each setter ignores clicks while saving. */
+  async resetCardDisplay(): Promise<void> {
+    if (this.cardSize !== DEFAULT_CARD_SIZE)
+      await this.setCardSize(DEFAULT_CARD_SIZE);
+    if (!this.cardSizeFailed && this.cardHover !== DEFAULT_CARD_HOVER)
+      await this.setCardHover(DEFAULT_CARD_HOVER);
+  }
   get fontSizesAreDefault(): boolean {
     return FONT_SIZE_AREAS.every(
       ({ key }) => this.fontSizes[key] === DEFAULT_FONT_SIZES[key],
@@ -2880,6 +2943,7 @@ export class AppComponent implements OnInit, OnDestroy {
           "ui.login_background",
           "ui.card_layouts",
           "ui.card_size",
+          "ui.card_hover",
         ].includes(key)
       )
         return false;

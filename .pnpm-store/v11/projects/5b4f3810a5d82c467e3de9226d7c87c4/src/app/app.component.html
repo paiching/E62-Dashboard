@@ -167,7 +167,7 @@
         class="api-error"
         *ngIf="
           !syncError &&
-          appSettings['data.mode'] === 'live' &&
+          isLiveMode &&
           (apiStatus !== 'connected' || (snapshotReminderEnabled && apiStale))
         "
       >
@@ -354,12 +354,16 @@
                   </button>
                 </div>
                 <aside class="sensor-status-block">
-                  <span class="status-badge" [ngClass]="state(channel)">{{
+                  <mat-icon
+                    *ngIf="state(channel) !== 'ok'"
+                    class="sensor-reason-icon"
+                    [title]="reason(channel)"
+                    [attr.aria-label]="reason(channel)"
+                    role="img"
+                    >{{ reasonIcon(channel) }}</mat-icon
+                  ><span class="status-badge" [ngClass]="state(channel)">{{
                     statusLabel(state(channel))
-                  }}</span
-                  ><small *ngIf="state(channel) !== 'ok'">{{
-                    reason(channel)
-                  }}</small>
+                  }}</span>
                 </aside>
               </div>
               <div class="sensor-value">
@@ -1220,7 +1224,7 @@
                   [disabled]="!can('settings.theme.card-size.edit')"
                 >
                   <h3>儀錶板卡片大小</h3>
-                  <p>調整感應器卡片，卡片愈大每列張數愈少，選擇後立即套用。</p>
+                  <p>調整感應器卡片，卡片愈大每列張數愈少；滑鼠移到卡片上會稍微放大。選擇後立即套用，可移到下方預覽卡片試試。</p>
                   <div class="card-size-preview" aria-hidden="true">
                     <div class="sensor-card">
                       <div class="sensor-card-heading">
@@ -1248,12 +1252,29 @@
                         {{ size.label }}
                       </option>
                     </select></label
+                  ><label class="logo-style-field"
+                    >滑鼠移入放大<select
+                      [ngModel]="cardHover"
+                      (ngModelChange)="setCardHover($event)"
+                      [disabled]="cardSizeSaving"
+                    >
+                      <option
+                        *ngFor="let scale of cardHoverScales"
+                        [ngValue]="scale.percent"
+                      >
+                        {{ scale.label }}
+                      </option>
+                    </select></label
                   >
                   <button
                     type="button"
                     class="secondary-button"
-                    (click)="setCardSize(defaultCardSize)"
-                    [disabled]="cardSizeSaving || cardSize === defaultCardSize"
+                    (click)="resetCardDisplay()"
+                    [disabled]="
+                      cardSizeSaving ||
+                      (cardSize === defaultCardSize &&
+                        cardHover === defaultCardHover)
+                    "
                   >
                     恢復預設
                   </button>
@@ -1327,11 +1348,12 @@
                   [disabled]="!can('settings.data.data-mode.edit')"
                 >
                   <h3>資料模式</h3>
-                  <p>Mock 也會寫入 SQLite，方便先測試報表。模擬多態會混合溫度與濕度監測點。</p>
+                  <p>Mock 也會寫入 SQLite，方便先測試報表。模擬多態會混合溫度與濕度監測點；正式 API 多態使用 EdgeSense API v1，依各點的類型與單位顯示。</p>
                   <select [(ngModel)]="appSettings['data.mode']">
                     <option value="mock">MOCK · 模擬資料</option>
                     <option value="mock-multi">MOCK · 模擬多態（溫度／濕度）</option>
-                    <option value="live">LIVE · 正式 API</option></select
+                    <option value="live">LIVE · 正式 API</option>
+                    <option value="live-multi">LIVE · 正式 API 多態（API v1）</option></select
                   ><button
                     class="secondary-button"
                     (click)="
@@ -1399,6 +1421,18 @@
                   >
                     儲存端點
                   </button>
+                  <p>正式 API 多態（API v1）網址，填到埠號即可，例如 http://127.0.0.1:8765。</p>
+                  <input
+                    [(ngModel)]="appSettings['api.v1_url']"
+                    placeholder="http://127.0.0.1:8765"
+                  /><button
+                    class="secondary-button"
+                    (click)="
+                      saveDatabaseSetting('api.v1_url', appSettings['api.v1_url'])
+                    "
+                  >
+                    儲存 API v1 網址
+                  </button>
                 </fieldset>
               </div>
             </article>
@@ -1425,6 +1459,26 @@
                     "
                   >
                     儲存 Token
+                  </button>
+                  <p>
+                    正式 API 多態（API v1）以帳號登入，密碼加密儲存在本機；密碼留空會保留已儲存的密碼，帳號清空則一併清除。
+                  </p>
+                  <input
+                    [(ngModel)]="apiV1Draft.username"
+                    placeholder="API v1 帳號"
+                    autocomplete="off"
+                  /><input
+                    type="password"
+                    [(ngModel)]="apiV1Draft.password"
+                    [placeholder]="
+                      apiV1HasPassword ? '已儲存密碼（留空保留）' : 'API v1 密碼'
+                    "
+                    autocomplete="new-password"
+                  /><button
+                    class="secondary-button"
+                    (click)="saveApiV1Credentials()"
+                  >
+                    儲存 API v1 帳密
                   </button>
                 </fieldset>
               </div>

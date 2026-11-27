@@ -1090,3 +1090,57 @@ button {
 .line-card .brand-actions {
   margin-top: 14px;
 }
+
+/* Unit next to a reading (°C, %): about 70% of the reading at 100%, and
+   "讀值單位" in 字級設定 scales it further. */
+.sensor-value > span {
+  font-size: calc(
+    21px * var(--font-scale) * var(--card-scale) * var(--font-scale-units)
+  );
+}
+.mode-detailed .sensor-value > span,
+.mode-fullscreen .sensor-value > span {
+  font-size: calc(
+    26px * var(--font-scale) * var(--card-scale) * var(--font-scale-units)
+  );
+}
+.sensor-modal-reading > span {
+  font-size: calc(29px * var(--font-scale) * var(--font-scale-units));
+}
+
+/* Card status: an icon beside the badge instead of the reason text, so a
+   card in alarm is as tall as a normal one. Hover shows the full reason. */
+.sensor-card .sensor-status-block {
+  flex-direction: row;
+  align-items: center;
+  max-width: none;
+  gap: 4px;
+}
+.sensor-reason-icon {
+  width: calc(18px * var(--font-scale));
+  height: calc(18px * var(--font-scale));
+  color: var(--red);
+  cursor: help;
+}
+.sensor-card.error .sensor-reason-icon {
+  color: #566577;
+}
+
+/* Dashboard cards grow a little under the mouse; "滑鼠移入放大" in 主題設定
+   sets --card-hover-scale (1 turns it off). */
+.sensor-card {
+  position: relative;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
+}
+.sensor-card:hover {
+  z-index: 2;
+  transform: scale(var(--card-hover-scale));
+  box-shadow: 0 10px 26px #11243d24;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sensor-card {
+    transition: none;
+  }
+}

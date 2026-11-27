@@ -63,6 +63,8 @@ const SETTING_PERMISSIONS = {
   "api.poll_interval_ms": "settings.data.poll-interval.edit",
   "api.data_url": "settings.data.api-url.edit",
   "api.auth_token": "settings.data.api-token.edit",
+  "api.v1_url": "settings.data.api-url.edit",
+  "api.v1_credentials": "settings.data.api-token.edit",
   "report.retention_days": "settings.data.retention.edit",
   "dashboard.show_status": "settings.alarm.status-bar.edit",
   "alarms.default_limits": "settings.alarm.default-limits.edit",
@@ -86,6 +88,7 @@ const SETTING_PERMISSIONS = {
   ],
   "ui.login_background": "settings.theme.login-background.edit",
   "ui.card_size": "settings.theme.card-size.edit",
+  "ui.card_hover": "settings.theme.card-size.edit",
   "ui.card_layouts": "settings.layout",
 };
 /** Settings without a card of their own go with arranging the settings page. */
