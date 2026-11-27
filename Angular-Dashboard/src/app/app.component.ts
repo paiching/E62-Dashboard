@@ -73,6 +73,11 @@ import {
   DEFAULT_CARD_HOVER,
   parseCardHover,
   applyCardHover,
+  DEFAULT_READING_COLORS,
+  parseReadingColors,
+  applyReadingColors,
+  type ReadingColorKind,
+  type ReadingColors,
   applyCardSize,
   parseCardSize,
 } from "./card-size";
@@ -238,6 +243,10 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly cardHoverScales = CARD_HOVER_SCALES;
   readonly defaultCardHover = DEFAULT_CARD_HOVER;
   cardHover = DEFAULT_CARD_HOVER;
+  readingColors: ReadingColors = { ...DEFAULT_READING_COLORS };
+  /** Chromium's screen eyedropper; missing in other browsers. */
+  readonly eyeDropperAvailable =
+    typeof window !== "undefined" && "EyeDropper" in window;
   cardSizeSaving = false;
   cardSizeMessage = "";
   cardSizeFailed = false;
@@ -857,6 +866,10 @@ export class AppComponent implements OnInit, OnDestroy {
     applyCardSize(this.cardSize);
     this.cardHover = parseCardHover(this.appSettings["ui.card_hover"]);
     applyCardHover(this.cardHover);
+    this.readingColors = parseReadingColors(
+      this.appSettings["ui.reading_colors"],
+    );
+    applyReadingColors(this.readingColors);
     for (const key of ["logo", "sidebar", "background"] as const)
       this.brandImages[key].url = parseBrandImage(
         key,
@@ -2759,12 +2772,62 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     this.cardSizeMessage = this.settingsMessage || "滑鼠移入效果儲存失敗";
   }
+  /** Live preview while dragging in the color picker; saved on change. */
+  previewReadingColor(kind: ReadingColorKind, color: string): void {
+    applyReadingColors({ ...this.readingColors, [kind]: color });
+  }
+  async setReadingColors(colors: ReadingColors): Promise<void> {
+    if (this.cardSizeSaving) return;
+    const previous = this.readingColors;
+    this.readingColors = colors;
+    applyReadingColors(colors);
+    this.cardSizeSaving = true;
+    this.cardSizeMessage = "";
+    this.cardSizeFailed = !(await this.saveDatabaseSetting(
+      "ui.reading_colors",
+      colors,
+    ));
+    this.cardSizeSaving = false;
+    if (this.cardSizeFailed) {
+      this.readingColors = previous;
+      applyReadingColors(previous);
+    }
+    this.cardSizeMessage = this.settingsMessage || "讀值顏色儲存失敗";
+  }
+  setReadingColor(kind: ReadingColorKind, color: string): Promise<void> {
+    return this.setReadingColors(
+      parseReadingColors({ ...this.readingColors, [kind]: color }),
+    );
+  }
+  /** Pick a color from anywhere on screen. */
+  async pickReadingColor(kind: ReadingColorKind): Promise<void> {
+    const EyeDropper = (
+      window as unknown as {
+        EyeDropper?: new () => { open(): Promise<{ sRGBHex: string }> };
+      }
+    ).EyeDropper;
+    if (!EyeDropper || this.cardSizeSaving) return;
+    try {
+      const { sRGBHex } = await new EyeDropper().open();
+      await this.setReadingColor(kind, sRGBHex);
+    } catch {
+      // Esc closes the eyedropper without a color.
+    }
+  }
+  get readingColorsAreDefault(): boolean {
+    return (
+      this.readingColors.normal === DEFAULT_READING_COLORS.normal &&
+      this.readingColors.alarm === DEFAULT_READING_COLORS.alarm
+    );
+  }
   /** One save at a time: each setter ignores clicks while saving. */
   async resetCardDisplay(): Promise<void> {
     if (this.cardSize !== DEFAULT_CARD_SIZE)
       await this.setCardSize(DEFAULT_CARD_SIZE);
     if (!this.cardSizeFailed && this.cardHover !== DEFAULT_CARD_HOVER)
       await this.setCardHover(DEFAULT_CARD_HOVER);
+    if (!this.cardSizeFailed && !this.readingColorsAreDefault)
+      await this.setReadingColors({ ...DEFAULT_READING_COLORS });
   }
   get fontSizesAreDefault(): boolean {
     return FONT_SIZE_AREAS.every(
@@ -2944,6 +3007,7 @@ export class AppComponent implements OnInit, OnDestroy {
           "ui.card_layouts",
           "ui.card_size",
           "ui.card_hover",
+          "ui.reading_colors",
         ].includes(key)
       )
         return false;

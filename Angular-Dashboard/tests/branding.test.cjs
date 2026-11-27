@@ -177,6 +177,10 @@ test("dashboard card size is validated, persisted and admin only", () => {
   db.initializeDatabase(directory, true);
   assert.equal(db.settingsObject()["ui.card_size"], 100);
   assert.equal(db.settingsObject()["ui.card_hover"], 105);
+  assert.deepEqual(db.settingsObject()["ui.reading_colors"], {
+    normal: "#148266",
+    alarm: "#c43d4e",
+  });
   const { token } = db.login("admin", "SGS@1234").session;
   assert.equal(
     db.saveSetting(token, "ui.card_size", 150)["ui.card_size"],
@@ -187,8 +191,33 @@ test("dashboard card size is validated, persisted and admin only", () => {
       () => db.saveSetting(token, "ui.card_size", invalid),
       /卡片大小/,
     );
+  assert.deepEqual(
+    db.saveSetting(token, "ui.reading_colors", {
+      normal: "#1A2B3C",
+      alarm: "#ff0000",
+      extra: "#000000",
+    })["ui.reading_colors"],
+    { normal: "#1a2b3c", alarm: "#ff0000" },
+  );
+  for (const invalid of [
+    null,
+    { normal: "#148266" },
+    { normal: "green", alarm: "#ff0000" },
+    { normal: "#fff", alarm: "#ff0000" },
+  ])
+    assert.throws(
+      () => db.saveSetting(token, "ui.reading_colors", invalid),
+      /讀值顏色/,
+    );
   const guest = db.login("guest", "").session;
   assert.throws(() => db.saveSetting(guest.token, "ui.card_size", 100));
+  assert.throws(() =>
+    db.saveSetting(guest.token, "ui.reading_colors", {
+      normal: "#000000",
+      alarm: "#000000",
+    }),
+  );
   db.initializeDatabase(directory, true);
   assert.equal(db.settingsObject()["ui.card_size"], 150);
+  assert.equal(db.settingsObject()["ui.reading_colors"].normal, "#1a2b3c");
 });

@@ -89,6 +89,7 @@ const SETTING_PERMISSIONS = {
   "ui.login_background": "settings.theme.login-background.edit",
   "ui.card_size": "settings.theme.card-size.edit",
   "ui.card_hover": "settings.theme.card-size.edit",
+  "ui.reading_colors": "settings.theme.card-size.edit",
   "ui.card_layouts": "settings.layout",
 };
 /** Settings without a card of their own go with arranging the settings page. */

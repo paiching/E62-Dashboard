@@ -118,6 +118,18 @@ const LOGO_SIZES = ["standard", "large", "xlarge"];
 const CARD_SIZES = [85, 100, 125, 150, 200];
 // Keep in sync with CARD_HOVER_SCALES in src/app/card-size.ts; 100 is off.
 const CARD_HOVER_SCALES = [100, 103, 105, 108];
+// Keep in sync with DEFAULT_READING_COLORS in src/app/card-size.ts.
+const DEFAULT_READING_COLORS = { normal: "#148266", alarm: "#c43d4e" };
+function normalizeReadingColors(value) {
+  const result = {};
+  for (const kind of Object.keys(DEFAULT_READING_COLORS)) {
+    const color = value?.[kind];
+    if (typeof color !== "string" || !/^#[0-9a-f]{6}$/i.test(color))
+      throw new Error("讀值顏色需為 #RRGGBB 格式");
+    result[kind] = color.toLowerCase();
+  }
+  return result;
+}
 const SETTINGS_TABS = ["theme", "data", "database", "alarm", "notification"];
 function normalizeCardLayouts(value) {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -213,6 +225,12 @@ function seedDatabase() {
     ],
     ["ui.card_size", 100, "display", "儀錶板卡片大小百分比"],
     ["ui.card_hover", 105, "display", "滑鼠移入卡片的放大百分比（100 為關閉）"],
+    [
+      "ui.reading_colors",
+      DEFAULT_READING_COLORS,
+      "display",
+      "儀錶板讀值數字顏色（正常／警報）",
+    ],
     ["ui.card_layouts", {}, "display", "各設定分頁的卡片排列"],
     [
       "ui.login_background",
@@ -699,6 +717,7 @@ function saveSetting(token, key, value) {
     throw new Error("不支援的卡片大小");
   if (key === "ui.card_hover" && !CARD_HOVER_SCALES.includes(value))
     throw new Error("不支援的滑鼠移入效果");
+  if (key === "ui.reading_colors") value = normalizeReadingColors(value);
   if (key === "ui.logo_size" && !LOGO_SIZES.includes(value))
     throw new Error("不支援的 Logo 大小");
   if (

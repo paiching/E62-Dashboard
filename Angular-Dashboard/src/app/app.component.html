@@ -1223,8 +1223,8 @@
                   class="card-fields"
                   [disabled]="!can('settings.theme.card-size.edit')"
                 >
-                  <h3>儀錶板卡片大小</h3>
-                  <p>調整感應器卡片，卡片愈大每列張數愈少；滑鼠移到卡片上會稍微放大。選擇後立即套用，可移到下方預覽卡片試試。</p>
+                  <h3>儀錶板卡片大小與顏色</h3>
+                  <p>調整感應器卡片，卡片愈大每列張數愈少；滑鼠移到卡片上會稍微放大。讀值顏色可點色塊選色，或用滴管吸取螢幕上任一處的顏色。選擇後立即套用，可移到下方預覽卡片試試。</p>
                   <div class="card-size-preview" aria-hidden="true">
                     <div class="sensor-card">
                       <div class="sensor-card-heading">
@@ -1237,6 +1237,57 @@
                       <div class="sensor-card-footer">
                         <span>SV 5.0 °C</span><span>剛剛</span>
                       </div>
+                    </div>
+                    <div class="sensor-card alarm">
+                      <div class="sensor-card-heading">
+                        <div><span>CH002</span><b>警報預覽</b></div>
+                        <span class="status-badge alarm">警報</span>
+                      </div>
+                      <div class="sensor-value">
+                        <strong>9.6</strong><span>°C</span>
+                      </div>
+                      <div class="sensor-card-footer">
+                        <span>SV 5.0 °C</span><span>剛剛</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="reading-color-fields">
+                    <div
+                      class="reading-color-field"
+                      *ngFor="
+                        let item of [
+                          { kind: 'normal', label: '正常數字顏色' },
+                          { kind: 'alarm', label: '警報數字顏色' }
+                        ]
+                      "
+                    >
+                      <span>{{ item.label }}</span>
+                      <input
+                        type="color"
+                        [attr.aria-label]="item.label"
+                        [value]="$any(readingColors)[item.kind]"
+                        (input)="
+                          previewReadingColor(
+                            $any(item.kind),
+                            $any($event.target).value
+                          )
+                        "
+                        (change)="
+                          setReadingColor($any(item.kind), $any($event.target).value)
+                        "
+                        [disabled]="cardSizeSaving"
+                      />
+                      <code>{{ $any(readingColors)[item.kind] }}</code>
+                      <button
+                        type="button"
+                        class="secondary-button reading-color-dropper"
+                        *ngIf="eyeDropperAvailable"
+                        (click)="pickReadingColor($any(item.kind))"
+                        [disabled]="cardSizeSaving"
+                        [title]="'用滴管吸取' + item.label"
+                      >
+                        <mat-icon>colorize</mat-icon>滴管
+                      </button>
                     </div>
                   </div>
                   <label class="logo-style-field"
@@ -1273,7 +1324,8 @@
                     [disabled]="
                       cardSizeSaving ||
                       (cardSize === defaultCardSize &&
-                        cardHover === defaultCardHover)
+                        cardHover === defaultCardHover &&
+                        readingColorsAreDefault)
                     "
                   >
                     恢復預設

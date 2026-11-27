@@ -48,3 +48,28 @@ export function applyCardHover(percent: number): void {
     String(percent / 100),
   );
 }
+
+export type ReadingColorKind = "normal" | "alarm";
+export type ReadingColors = Record<ReadingColorKind, string>;
+// Keep in sync with DEFAULT_READING_COLORS in electron/database.cjs.
+export const DEFAULT_READING_COLORS: ReadingColors = {
+  normal: "#148266",
+  alarm: "#c43d4e",
+};
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+export function parseReadingColors(value: unknown): ReadingColors {
+  const input = (value ?? {}) as Partial<Record<ReadingColorKind, unknown>>;
+  const pick = (kind: ReadingColorKind) =>
+    typeof input[kind] === "string" && HEX_COLOR.test(input[kind] as string)
+      ? (input[kind] as string).toLowerCase()
+      : DEFAULT_READING_COLORS[kind];
+  return { normal: pick("normal"), alarm: pick("alarm") };
+}
+
+/** Colors of the reading numbers on dashboard cards and the detail dialog. */
+export function applyReadingColors(colors: ReadingColors): void {
+  const style = document.documentElement.style;
+  style.setProperty("--reading-normal", colors.normal);
+  style.setProperty("--reading-alarm", colors.alarm);
+}

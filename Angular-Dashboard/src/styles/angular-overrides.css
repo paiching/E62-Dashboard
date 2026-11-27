@@ -1144,3 +1144,93 @@ button {
     transition: none;
   }
 }
+
+/* Minimal look: no colored edge accents, flatter surfaces, color only where
+   a state needs attention. */
+.sidebar-nav button.active {
+  box-shadow: none;
+}
+.sensor-card,
+.sensor-card.alarm,
+.sensor-card.error {
+  border-top: 1px solid var(--line);
+  box-shadow: none;
+}
+.sensor-card.alarm {
+  border-color: #f1d3d8;
+  background: #fffbfc;
+}
+.sensor-card.error {
+  background: #f7f8fa;
+}
+/* "讀值顏色" in 主題設定 sets these. */
+.sensor-card .sensor-value,
+.sensor-modal .sensor-modal-reading {
+  color: var(--reading-normal);
+}
+.sensor-card.alarm .sensor-value,
+.sensor-modal.alarm .sensor-modal-reading {
+  color: var(--reading-alarm);
+}
+.sensor-card.error .sensor-value {
+  color: #657384;
+}
+.sensor-range {
+  background: #f4f7fa;
+}
+.summary-card,
+.sensor-toolbar {
+  box-shadow: none;
+}
+.sensor-card:hover,
+.sensor-card.alarm:hover,
+.sensor-card.error:hover {
+  box-shadow: 0 10px 26px #11243d1f;
+}
+
+.card-size-preview:has(.sensor-card.alarm) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 9px;
+}
+.reading-color-fields {
+  display: grid;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+.reading-color-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.reading-color-field > span {
+  min-width: 7.5em;
+  color: var(--muted);
+  font-size: calc(12px * var(--font-scale));
+  font-weight: 800;
+}
+.reading-color-field input[type="color"] {
+  width: 44px;
+  height: calc(32px * var(--font-scale));
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  cursor: pointer;
+}
+.reading-color-field code {
+  min-width: 5.5em;
+  color: var(--ink);
+  font-size: calc(12px * var(--font-scale));
+}
+.reading-color-field .reading-color-dropper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.reading-color-field .reading-color-dropper mat-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 18px;
+}
